@@ -49,6 +49,8 @@ long int counter;
 
 short 类型通常为 16 位，1ong 类型通常为 32位，int 类型可以为 16 位或 32 位。
 
+![](https://img-blog.csdn.net/20150906203636718)
+
 各编译器可以根据硬件特性自主选择合适的类型长度，但要遵循下列限制：short 与 int 类型至少为 16 位，而 long 类型至少为 32 位，并且 short 类型不得长于 int 类型，而 int 类型不得长于 long 类型。
 
 **类型限定符:** signed 和 unsigned 可用于限定 char 类型或任何整型。
