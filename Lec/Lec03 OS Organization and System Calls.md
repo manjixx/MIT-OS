@@ -1,4 +1,4 @@
-# Lec 03 OS Organization and System Calls
+# Lec 03. OS Organization and System Calls
 
 - [Lec 03 OS Organization and System Calls](#lec-03-os-organization-and-system-calls)
   - [3.1 课程回顾](#31-课程回顾)

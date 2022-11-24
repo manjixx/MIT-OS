@@ -328,7 +328,7 @@ For more information about this security protection see the
 
 解决方案：
 
-xv6-riscv 目录下有 .gdbinit 配置 有的情况下 riscv64-unknown-elf-gdb 会自动加载，如果没有.gdbinit则需要你手动 source .gdbinit 当打印 0x0000000000001000 in ?? () 代表可以调试。
+xv6-riscv 目录下有 `.gdbinit` 配置 有的情况下 `riscv64-unknown-elf-gdb` 会自动加载，如果没有`.gdbinit`则需要你手动 `source .gdbinit` 当打印 `0x0000000000001000 in ?? ()` 代表可以调试。
 
 > ## 参考
 
