@@ -328,7 +328,7 @@ For more information about this security protection see the
 
 解决方案：
 
-xv6-riscv 目录下有 .gdbinit 配置 有的情况下 riscv64-unknown-elf-gdb 会自动加载，如果没有.gdbinit则需要你手动 source .gdbinit 当打印 0x0000000000001000 in ?? () 代表可以调试。
+xv6-riscv 目录下有 `.gdbinit` 配置 有的情况下 `riscv64-unknown-elf-gdb` 会自动加载，如果没有`.gdbinit`则需要你手动 `source .gdbinit` 当打印 `0x0000000000001000 in ?? ()` 代表可以调试。
 
 > ## 参考
 
@@ -336,9 +336,9 @@ xv6-riscv 目录下有 .gdbinit 配置 有的情况下 riscv64-unknown-elf-gdb �
 
 ---
 
-# 版本控制
+## 版本控制
 
-## 一、分支切换
+### 一、分支切换
 
 1. 查看是否有.git目录
 
@@ -364,7 +364,7 @@ git checkout 分支名
 
 ```
 
-## 二、将实验代码提交到github
+### 二、将实验代码提交到github
 
 1. 首先将mit的实验代码克隆到本地
 
@@ -409,7 +409,7 @@ git merge util_test
 git push github util:util
 ```
 
-# 代码拉取流程
+## 代码拉取流程
 
 ```shell
 # 查看分支
@@ -440,4 +440,11 @@ git push github util:util
 
 # 将代码推送到自己的分支仓库
 (base) iiixv@IIIXVdeMacBook-Air xv6-labs-2020 % git push github fs:fs  
+```
+
+## 退出xv6
+
+```bash
+ctrl + a 
+x
 ```

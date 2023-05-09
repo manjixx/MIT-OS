@@ -43,7 +43,7 @@
 
 - 首先我会讨论一下地址空间（Address Spaces）。
 - 支持虚拟内存的硬件。当然，我介绍的是RISC-V相关的硬件。但是从根本上来说，所有的现代处理器都有某种形式的硬件，来作为实现虚拟内存的默认机制。
-- XV6中的虚拟内存代码，并看一下内核地址空间和用户地址空间的结构。
+- **XV6中的虚拟内存代码**，并看一下**内核地址空间**和**用户地址空间**的结构(layout)。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKNl6g8JRdUm5IhM68c%2Fimage.png?alt=media&token=4f65a8f7-f278-46d6-b027-e20d86db6a40)
 
@@ -55,8 +55,8 @@
 
 在我们一个常出现的图中，我们有一些用户应用程序比如说Shell，cat以及你们自己在lab1创造的各种工具。在这些应用程序下面，我们有操作系统位于内核空间。我们期望的是：
 
-- 用户程序间彼此相互独立
-- 应用程序与内核操作系统相互独立，这样如果某个应用程序无意或者故意做了一些坏事，也不会影响到操作系统。这是我们对于隔离性的期望。
+- **用户程序间彼此相互独立**
+- **应用程序与内核操作系统相互独立**，这样如果某个应用程序无意或者故意做了一些坏事，也不会影响到操作系统。这是我们对于隔离性的期望。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKNnmJ4XqAfHllLizrD%2Fimage.png?alt=media&token=0e93f4b4-cc25-4ad1-9dc7-a2b7e9f46179)
 
@@ -66,14 +66,12 @@
 
 在我们上节课展示的RISC-V主板上，内存是由一些DRAM芯片组成。在这些DRAM芯片中保存了程序的数据和代码。例如内存中的某一个部分是内核，包括了文本，数据，栈等等；
 
-- 如果运行了Shell，内存中的某个部分就是Shell；
-- 如果运行了cat程序，内存中的某个部分是cat程序。
+- 如果运行了`Shell`，内存中的某个部分就是`Shell`；
+- 如果运行了`cat`程序，内存中的某个部分是`cat`程序。
 
-![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKNqnPCnT2bn8WfJCnh%2Fimage.png?alt=media&token=b46d835b-d146-4aab-9048-63df96feb366)
+上述所指都是**物理内存**，它的地址从0开始到某个大的地址结束。结束地址取决于我们的机器现在究竟有多少物理内存。所有程序都必须存在于物理内存中，否则处理器甚至都不能处理程序的指令。
 
-上述所指都是物理内存，它的地址从0开始到某个大的地址结束。结束地址取决于我们的机器现在究竟有多少物理内存。所有程序都必须存在于物理内存中，否则处理器甚至都不能处理程序的指令。
-
-这里的风险很明显。我们简单化一下场景，假设 **`Shell`存在于内存地址1000-2000之间**。如果`cat`出现了程序错误，**将内存地址1000，也就是`Shell`的起始地址加载到寄存器`a0`中** 。之后执行`sd $7, (a0)`，这里等效于将`7`写入内存地址`1000`。
+如下场景，假设 **`Shell`存在于内存地址1000-2000之间**。如果`cat`出现了程序错误，**将内存地址1000，也就是`Shell`的起始地址加载到寄存器`a0`中** 。之后执行`sd $7, (a0)`，这里等效于将`7`写入内存地址`1000`。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKNz-f6MsF7yVvGAW0X%2Fimage.png?alt=media&token=7eb372f7-8a32-4651-8c87-1677788a663a)
 
@@ -81,17 +79,13 @@
 
 > **地址空间 (Address Spaces)**
 
-我们想要某种机制，能够将不同程序之间的内存隔离开来，类似的事情就不会发生。一种实现方式是地址空间（Address Spaces）。
-
-其基本概念也很简单直观，我们给**包括内核在内的所有程序专属的地址空间**。
+我们想要某种机制，能够将不同程序之间的内存隔离开来，类似的事情就不会发生。**一种实现方式是地址空间（Address Spaces）**。即我们给**包括内核在内的所有程序专属的地址空间**。
 
 **当我们运行`cat`时**，它的地址空间从0到某个地址结束。**当我们运行`Shell`时**，它的地址也从0开始到某个地址结束。如果`cat`程序想要向地址1000写入数据，那么`cat`只会向它自己的地址1000，而不是`Shell`的地址`1000`写入数据。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKO-tmkrzI0URCtzr3X%2Fimage.png?alt=media&token=1f13b9ec-04fc-4b09-9a80-5d43b4664bde)
 
-**每个程序都运行在自己的地址空间，并且这些地址空间彼此之间相互独立**。
-
-在这种不同地址空间的概念中，`cat`程序甚至都不具备引用属于`Shell`的内存地址的能力。这是我们想要达成的终极目标，因为这种方式为我们提供了强隔离性，`cat`现在不能引用任何不属于自己的内存。
+**每个程序都运行在自己的地址空间，并且这些地址空间彼此之间相互独立**。在这种不同地址空间的概念中，`cat`程序甚至都不具备引用属于`Shell`的内存地址的能力。这是我们想要达成的终极目标，因为这种方式为我们提供了强隔离性，`cat`现在不能引用任何不属于自己的内存。
 
 所以**现在的问题**是**如何在一个物理内存上，创建不同的地址空间**，因为归根到底，我们使用的还是一堆存放了内存信息的DRAM芯片。
 
@@ -99,25 +93,21 @@
 
 Q（Student）：我比较好奇物理内存的配置，因为物理内存的数量是有限的，而虚拟地址空间存在最大虚拟内存地址，但是会有很多个虚拟地址空间，所以我们在设计的时候需要将最大虚拟内存地址设置的足够小吗？
 
-- **Frans教授**：并不必要，虚拟内存可以比物理内存更大，物理内存也可以比虚拟内存更大。我们马上就会看到这里是如何实现的，其实就是通过page table来实现，这里非常灵活。
+- **Frans教授**：并不必要，**虚拟内存可以比物理内存更大，物理内存也可以比虚拟内存更大**。我们马上就会看到这里是如何实现的，其实就是通过`page table`来实现，这里非常灵活。
 
 Q（Student）：同一个学生继续问：如果有太多的进程使用了虚拟内存，有没有可能物理内存耗尽了？
 
-- **Frans教授**：这必然是有可能的。我们接下来会看到如果你有一些大的应用程序，每个程序都有大的page table，并且分配了大量的内存，在某个时间你的内存就耗尽了。
+- **Frans教授**：这必然是有可能的。我们接下来会看到如果你有一些大的应用程序，每个程序都有大的`page table`，并且分配了大量的内存，在某个时间你的内存就耗尽了。
 
-Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**？如果你们完成了syscall实验，你们会知道在syscall实验中有一部分是打印剩余内存的数量。
+Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**？如果你们完成了`syscall`实验，你们会知道在`syscall`实验中有一部分是打印剩余内存的数量。
 
-- **Student**：kalloc？
-- **Frans教授**：是的，kalloc。kalloc保存了空余page的列表，如果这个列表为空或者耗尽了，那么kalloc会返回一个空指针，内核会妥善处理并将结果返回给用户应用程序。并告诉用户应用程序，要么是对这个应用程序没有额外的内存了，要么是整个机器都没有内存了。
+- **Student**：`kalloc`？
+- **Frans教授**：是的，`kalloc`保存了空余`page`的列表，如果这个列表为空或者耗尽了，那么`kalloc`会返回一个空指针，内核会妥善处理并将结果返回给用户应用程序。并告诉用户应用程序，要么是对这个应用程序没有额外的内存了，要么是整个机器都没有内存了。
 内核的一部分工作就是优雅的处理这些情况，这里的优雅是**指向用户应用程序返回一个错误消息，而不是直接崩溃。**
 
 ## 4.3 页表（Page Table）
 
-> **页表**
-
-实现地址空间:最常见的方法，同时也是非常灵活的一种方法就是使用**页表（Page Tables）**。
-
-**页表**是在硬件中通过**处理器**和**内存管理单元（Memory Management Unit）** 实现。
+最常见的方法而且非常灵活的实现地址空间的一种方法就是使用**页表（Page Tables）**。**页表**是在硬件中通过**处理器**和**内存管理单元（Memory Management Unit）** 实现。
 
 > **page table（HW）**
 
@@ -129,7 +119,9 @@ Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**�
 
 - 为了能够**完成虚拟内存地址到物理内存地址的翻译**，MMU会有一个表单，表单中，一边是**虚拟内存地址**，另一边是**物理内存地址**。举个例子，虚拟内存地址`0x1000`对应了一个物理内存地址`0xFFF0`。这样的表单可以非常灵活。
 
-- **内存地址对应关系的表单保存在内存中**。*CPU中需要有一些寄存器用来存放表单在物理内存中的地址。* 现在，在内存的某个位置保存了地址关系表单，我们假设这个位置的物理内存地址是`0x10`。在 **RISC-V上一个叫做SATP的寄存器会保存地址`0x10`。** 这样，CPU就可以告诉MMU，可以从哪找到将虚拟内存地址翻译成物理内存地址的表单。
+- **内存地址对应关系的表单保存在内存中**。*CPU中需要有一些寄存器用来存放表单在物理内存中的地址。* 在内存的某个位置保存了地址关系表单，我们假设这个位置的物理内存地址是`0x10`。在 **RISC-V上一个叫做SATP的寄存器会保存地址`0x10`。** 这样，CPU就可以告诉MMU，可以从哪找到将虚拟内存地址翻译成物理内存地址的表单。
+
+- every app has his own map.
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKONgZr-r8W5uRpknWQ%2Fimage.png?alt=media&token=30b484c3-ca16-43f7-a457-aba16023ef0d)
 
@@ -137,11 +129,11 @@ Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**�
 
 > **学生提问1**
 
-**Q（Student）**：学生提问：所以**MMU并不会保存page table，它只会从内存中读取page table，然后完成翻译**，是吗？
+**Q（Student）**：学生提问：所以**MMU并不会保存`page table`，它只会从内存中读取`page table`，然后完成翻译**，是吗？
 
-- **Frans教授**：是的，这就是你们应该记住的。page table保存在内存中，MMU只是会去查看page table，我们接下来会看到，page table比我们这里画的要稍微复杂一些。
+- **Frans教授**：是的，这就是你们应该记住的。`page table`保存在内存中，MMU只是会去查看`page table`，我们接下来会看到，`page table`比我们这里画的要稍微复杂一些。
 
-**Q（Student）**：刚刚说到`SATP`寄存器会根据进程而修改，我猜每个进程对应的`SATP`值是由内核保存的？
+**Q（Student）**：刚刚说到`SATP`寄存器会根据进程而修改，我猜每个进程对应的`SATP`值是由kernel保存的？
 
 - **Frans教授**：是的。**内核会写`SATP`寄存器，写`SATP`寄存器是一条特殊权限指令。** 所以，用户应用程序不能通过更新这个寄存器来更换一个地址对应表单，否则的话就会破坏隔离性。所以，只有运行在`kernel mode`的代码可以更新这个寄存器。
 
@@ -152,13 +144,11 @@ Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**�
 - 这里的表单是如何工作的？
 - 从刚刚画的图看来，对于每个虚拟地址，在表单中都有一个条目，如果我们真的这么做，表单会有多大？
 - 原则上说，在RISC-V上会有多少地址，或者一个寄存器可以保存多少个地址？
-- 寄存器是64bit的，所以有多少个地址呢？
-
-是的，`2^64`个地址，所以如果我们**以地址为粒度来管理**，表单会变得非常巨大。实际上，所有的内存都会被这里的表单耗尽，所以这一点也不合理。实际情况不可能是一个虚拟内存地址对应page table中的一个条目。
+- 寄存器是64bit的，所以有多少个地址呢？`2^64`个地址，所以如果我们**以地址为粒度来管理**，表单会变得非常巨大。实际上，所有的内存都会被这里的表单耗尽，所以这一点也不合理。实际情况不可能是一个虚拟内存地址对应page table中的一个条目。
 
 接下来**我将分两步介绍RISC-V中是如何工作的**。
 
-**第一步**：**不要为每个地址创建一条表单条目，而是为每个page创建一条表单条目**，因此每一次地址翻译都是针对一个`page`。而`RISC-V`中，一个`page`的大小是4KB，也就是`4096Bytes`。
+**第一步**：**不要为每个地址创建一条表单条目，而是为每个`page`创建一条表单条目**，因此每一次地址翻译都是针对一个`page`。而`RISC-V`中，一个`page`的大小是`4KB`，也就是`4096Bytes`。
 
 因为RISC-V的寄存器是64bit，所以RISC-V的**虚拟内存地址都是64bit**。但是实际上，**当我们使用的RSIC-V处理器上，并不是所有的64bit都被使用了，高25bit并没有被使用**。
 
@@ -166,8 +156,6 @@ Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**�
 - 在剩下的`39bit`中，我们将它划分为两个部分,当MMU在做地址翻译的时候:
   - `27bit`被用来当做`index`，`index`用来查找`page`,通过读取虚拟内存地址中的index可以知道物理内存中的page号，这个page号对应了物理内存中的4096个字节。
   - `12bit`被用来当做`offset`。`offset`对应的是一个`page`中的哪个字节。**`offset`必须是`12bit`，因为对应了一个`page`的`4096`个字节。** 之后虚拟内存地址中的offset指向了page中的4096个字节中的某一个，假设offset是12，那么page中的第12个字节被使用了。将offset加上page的起始地址，就可以得到物理内存地址。
-
-![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKKjB2an4WcuUmOlE__%2F-MKOz__c9_i1WtdpcLuS%2Fimage.png?alt=media&token=47af9278-7fb8-4128-a56a-701ce40035c3)
 
 **RISC-V的物理内存,** 在RISC-V中，物理内存地址是`56bit`:
 
@@ -181,9 +169,9 @@ Q（Frans教授）：大家们，**在XV6中从哪可以看到内存耗尽了**�
 
 这里有什么问题吗？这些的内容还挺重要的，你们需要掌握这的内容才能做出下一个page table lab。
 
-Q（Student）：我想知道4096字节作为一个page，这在物理内存中是连续的吗？所以offset才是12bit，这样就足够覆盖4096个字节？图中的56bit又是根据什么确定的？
+**Q（Student）**：我想知道`4096`字节作为一个`page`，这在物理内存中是连续的吗？所以`offset`才是`12bit`，这样就足够覆盖`4096`个字节？图中的`56bit`又是根据什么确定的？
 
-- Frans教授：是的，在物理内存中，这是连续的4096个字节。所以物理内存是以4096为粒度使用的。page中的每个字节都可以被offset索引到。这是由硬件设计人员决定的。所以RISC-V的设计人员认为56bit的物理内存地址是个不错的选择。可以假定，他们是通过技术发展的趋势得到这里的数字。比如说，设计是为了满足5年的需求，可以预测物理内存在5年内不可能超过$2^{56}$这么大。或许，他们预测是的一个小得多的数字，但是为了防止预测错误，他们选择了像$2^{56}$这么大的数字。这里说的通吗？很多同学都问了这个问题。
+- Frans教授：是的，在物理内存中，这是连续的`4096`个字节。所以物理内存是以`4096`为粒度使用的。`page`中的每个字节都可以被`offset`索引到。这是由硬件设计人员决定的。所以RISC-V的设计人员认为` `的物理内存地址是个不错的选择。可以假定，他们是通过技术发展的趋势得到这里的数字。比如说，设计是为了满足5年的需求，可以预测物理内存在5年内不可能超过$2^{56}$这么大。或许，他们预测是的一个小得多的数字，但是为了防止预测错误，他们选择了像$2^{56}$这么大的数字。这里说的通吗？很多同学都问了这个问题。
 
 Q（Student）：如果虚拟内存最多是$2^{27}$（最多应该是$2^{39}$），而物理内存最多是$2^{56}$，这样我们可以有多个进程都用光了他们的虚拟内存，但是物理内存还有剩余，对吗？
 
@@ -239,11 +227,11 @@ Q（Student）：我们从CPU到MMU之后到了内存，但是不同的进程之
 
 接下来，让我们看看PTE中的Flag，因为它也很重要。**每个PTE的低10bit是一堆标志位**：
 
-- 第一个标志位是`Valid`。如果`Valid bit`位为1，那么表明这是一条合法的`PTE`，你可以用它来做地址翻译。对于刚刚举的应用程序只用了1个page的例子，我们只使用了3个`page directory`，每`个page directory`中只有第0个PTE被使用了，所以只有第0个PTE的Valid bit位会被设置成1，**其他的511个PTE的Valid bit为0。** 这个标志位告诉MMU，你不能使用这条PTE，因为这条PTE并不包含有用的信息。
+- **第一个标志位是`Valid`**。如果`Valid bit`位为1，那么表明这是一条合法的`PTE`，你可以用它来做地址翻译。对于刚刚举的应用程序只用了1个page的例子，我们只使用了3个`page directory`，每`个page directory`中只有第0个PTE被使用了，所以只有第0个PTE的Valid bit位会被设置成1，**其他的511个PTE的Valid bit为0。** 这个标志位告诉MMU，你不能使用这条PTE，因为这条PTE并不包含有用的信息。
 
-- 下两个标志位分别是`Readable`和`Writable`。表明你是否可以读/写这个page。
-- `Executable`表明你可以从这个page执行指令。
-- `User`表明这个`page`可以被运行在用户空间的进程访问。
+- 下两个标志位分别是 **`Readable`和`Writable`**。表明你是否可以读/写这个page。
+- **`Executable`** 表明你可以从这个page执行指令。
+- **`User`** 表明这个`page`可以被运行在用户空间的进程访问。
 - 其他标志位并不是那么重要，他们偶尔会出现，前面5个是重要的标志位。
 
 > **学生提问4**
@@ -252,36 +240,37 @@ Q（Student）：我们从CPU到MMU之后到了内存，但是不同的进程之
 
 - Frans教授：我之前或许没有很直接的说这部分（其实是有介绍的）。在最高级的`page directory`中的PPN，包含了下一级page directory的物理内存地址，依次类推。在最低级page directory，我们还是可以得到44bit的PPN，这里包含了我们实际上想要翻译的物理page地址，然后再加上虚拟内存地址的12bit offset，就得到了56bit物理内存地址。
 
-Q（Frans教授）：让我来问自己的一个有趣的问题，为什么是PPN存在这些page directory中？为什么不是一个虚拟内存地址？
+Q（Frans教授）：让我来问自己的一个有趣的问题，为什么是PPN存保存的是物理页面编号？而不是一个虚拟内存地址？
 
-- A（Student）：因为我们需要在物理内存中查找下一个page directory的地址。
+- A（Student）：因为我们需要查找内存，在物理内存中查找下一个page directory的地址。
 
-Q（Frans教授）：是的，我们不能让我们的地址翻译依赖于另一个翻译，否则我们可能会陷入递归的无限循环中。所以page directory必须存物理地址。那SATP呢？它存的是物理地址还是虚拟地址？
+Q（Frans教授）：是的，我们不能让我们的地址翻译依赖于另一个翻译，否则我们可能会陷入递归的无限循环中。所以`page directory`必须存物理地址。那`SATP`呢？它存的是物理地址还是虚拟地址？
 
-- A（Student）：还是物理地址，因为最高级的page directory还是存在物理内存中，对吧。
-- Frans教授：是的，这里必须是物理地址，因为我们要用它来完成地址翻译，而不是对它进行地址翻译。所以SATP需要知道最高一级的page directory的物理地址是什么。
+- A（Student）：还是物理地址，因为最高级的`page directory`还是存在物理内存中，对吧。
+  
+- Frans教授：是的，这里必须是物理地址，因为我们要用它来完成地址翻译，而不是对它进行地址翻译。所以`SATP`需要知道最高一级的`page directory`的物理地址是什么。
 
-Q（Student）： 这里有层次化的3个page table，每个page table都由虚拟地址的9个bit来索引，所以是由虚拟地址中的3个9bit来分别索引3个page table，对吗？
+Q（Student）： 这里有层次化的3个`page table`，每个`page table`都由虚拟地址的9个bit来索引，所以是由虚拟地址中的`3`个`9bit`来分别索引`3`个`page table`，对吗？
 
 - Frans教授：是的，最高的9个bit用来索引最高一级的page directory，第二个9bit用来索引中间级的page directory，第三个9bit用来索引最低级的page directory。
 
-Q（Student）：当一个进程请求一个虚拟内存地址时，CPU会查看SATP寄存器得到对应的最高一级page table，这级page table会使用虚拟内存地址中27bit index的最高9bit来完成索引，如果索引的结果为空，MMU会自动创建一个page table吗？
+Q（Student）：当一个进程请求一个虚拟内存地址时，`CPU`会查看`SATP`寄存器得到对应的最高一级`page table`，这级`page table`会使用虚拟内存地址中`27bit index`的最高`9bit`来完成索引，如果索引的结果为空，`MMU`会自动创建一个`page table`吗？
 
-- Frans教授：不会的，MMU会告诉操作系统或者处理器，抱歉我不能翻译这个地址，最终这会变成一个page fault。如果一个地址不能被翻译，那就不翻译。就像你在运算时除以0一样，处理器会拒绝那样做。
+- Frans教授：不会的，MMU会告诉操作系统或者处理器，抱歉我不能翻译这个地址，最终这会变成一个`page fault`。如果一个地址不能被翻译，那就不翻译。就像你在运算时除以0一样，处理器会拒绝那样做。
 
-Q（Student）：我想知道我们是怎么计算page table的物理地址，是不是这样，我们从最高级的page table得到44bit的PPN，然后再加上虚拟地址中的12bit offset，就得到了完整的56bit page table物理地址？
+Q（Student）：我想知道我们是怎么计算`page table`的物理地址，是不是这样，我们从最高级的`page table`得到`44bit`的`PPN`，然后再加上虚拟地址中的`12bit offset`，就得到了完整的`56bit page table`物理地址？
 
-- Frans教授：我们不会加上虚拟地址中的offset，这里只是使用了12bit的0。所以我们用44bit的PPN，再加上12bit的0，这样就得到了下一级page directory的56bit物理地址。**这里要求每个page directory都与物理page对齐**（也就是page directory的起始地址就是某个page的起始地址，所以低12bit都为0）。
+- Frans教授：我们不会加上虚拟地址中的`offset`，这里只是使用了`12bit的0`。所以我们用`44bit`的`PPN`，再加上`12bit`的`0`，这样就得到了下一级`page directory`的`56bit`物理地址。**这里要求每个`page directory`都与物理`page`对齐**（也就是`page directory`的起始地址就是某个`page`的起始地址，所以低`12bit`都为`0`）。
 
 ## 4.4 页表缓存（Translation Lookaside Buffer）
 
 > **TLB**
 
-如果我们回想一下page table的结构，可以发现，**当处理器从内存加载或者存储数据时，基本上都要做3次内存查找。** 第一次在最高级的page directory,第二次在中间级的page directory,最后一次在最低级的page directory。对于一个虚拟内存地址的寻址，需要读三次内存，这里代价有点高。
+如果我们回想一下page table的结构，可以发现，**当处理器从内存加载或者存储数据时，基本上都要做3次内存查找。** 第一次在最高级的`page directory`,第二次在中间级的`page directory`,最后一次在最低级的`page directory`。对于一个虚拟内存地址的寻址，需要读三次内存，这里代价有点高。
 
 所以所以实际中，几乎所有的处理器都会对于最近使用过的虚拟地址的翻译结果有缓存。这个缓存被称为：**`Translation Lookside Buffer（通常翻译成页表缓存）`**。你会经常看到它的缩写`TLB`。基本上来说，这就是`Page Table Entry`的缓存，也就是`PTE`的缓存。
 
-当处理器第一次查找一个虚拟地址时，硬件通过3级page table得到最终的PPN，TLB会保存虚拟地址到物理地址的映射关系。这样下一次当你访问同一个虚拟地址时，处理器可以查看TLB，TLB会直接返回物理地址，而不需要通过page table得到结果。
+当处理器第一次查找一个虚拟地址时，硬件通过3级`page table`得到最终的`PPN`，`TLB`会保存虚拟地址到物理地址的映射关系。这样下一次当你访问同一个虚拟地址时，处理器可以查看`TLB`，`TLB`会直接返回物理地址，而不需要通过` `得到结果。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKVKrpl8kcsGqWpnu7W%2F-MKXNac5VI27pJzzCyG6%2Fimage.png?alt=media&token=a9d33391-6989-4f31-b102-5d6d839d1e9c)
 
@@ -289,31 +278,32 @@ Q（Student）：我想知道我们是怎么计算page table的物理地址，�
 
 **Q（Student）：** 前面说TLB会保存虚拟地址到物理地址的对应关系，如果在page级别做cache是不是更加高效？
 
-- Frans教授：有很多种方法都可以实现TLB，对于你们来说最重要的是知道TLB是存在的。TLB实现的具体细节不是我们要深入讨论的内容。**这是处理器中的一些逻辑，对于操作系统来说是不可见的，操作系统也不需要知道TLB是如何工作的。** 你们需要知道TLB存在的唯一原因是，**如果你切换了page table，操作系统需要告诉处理器当前正在切换page table**，处理器会清空TLB。因为本质上来说，如果你切换了page table，TLB中的缓存将不再有用，它们需要被清空，否则地址翻译可能会出错。所以操作系统知道TLB是存在的，但只会时不时的告诉操作系统，现在的TLB不能用了，因为要切换page table了。在RISC-V中，清空TLB的指令是`sfence_vma`。
+- Frans教授：有很多种方法都可以实现TLB，对于你们来说最重要的是知道TLB是存在的。TLB实现的具体细节不是我们要深入讨论的内容。**这是处理器中的一些逻辑，对于操作系统来说是不可见的，操作系统也不需要知道TLB是如何工作的。** 你们需要知道TLB存在的唯一原因是，**如果你切换了page table，操作系统需要告诉处理器当前正在切换page table**，处理器会清空TLB。因为本质上来说，如果你切换了`page table`，TLB中的缓存将不再有用，它们需要被清空，否则地址翻译可能会出错。所以操作系统知道TLB是存在的，但只会时不时的告诉操作系统，现在的`TLB`不能用了，因为要切换`page table`了。在`RISC-V`中，清空`TLB`的指令是`sfence_vma`。
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKVKrpl8kcsGqWpnu7W%2F-MKXQkbjRFAud6aDXUd7%2Fimage.png?alt=media&token=c889f66d-b687-4a7b-95c6-1b44157e08e7)
 
-**Q(Student)**：3级的page table是由操作系统实现的还是由硬件自己实现的？
+**Q(Student)**：3级的`page table`是由操作系统实现的还是由硬件自己实现的？
 
-- Frans教授：这是由硬件实现的，所以3级 page table的查找都发生在硬件中。MMU是硬件的一部分而不是操作系统的一部分。在XV6中，有一个函数也实现了page table的查找，因为时不时的XV6也需要完成硬件的工作，所以XV6有这个叫做walk的函数，它在软件中实现了MMU硬件相同的功能。
+- Frans教授：这是由硬件实现的，所以3级 `page table`的查找都发生在硬件中。**MMU是硬件的一部分而不是操作系统的一部分**。在`XV6`中，有一个函数也实现了`page table`的查找，因为时不时的XV6也需要完成硬件的工作，所以`XV6`有这个叫做`walk`的函数，它在软件中实现了`MMU`硬件相同的功能。
   
-**Q(Student)**：在这个机制中，TLB发生在哪一步，是在地址翻译之前还是之后？
+**Q(Student)**：在这个机制中，`TLB`发生在哪一步，是在地址翻译之前还是之后？
 
-- Frans教授：整个CPU和MMU都在处理器芯片中，所以在一个RISC-V芯片中，有多个CPU核，MMU和TLB存在于每一个CPU核里面。RISC-V处理器有L1 cache，L2 Cache，有些cache是根据物理地址索引的，有些cache是根据虚拟地址索引的，由虚拟地址索引的cache位于MMU之前，由物理地址索引的cache位于MMU之后。
+- Frans教授：整个`CPU`和`MMU`都在处理器芯片中，所以在一个`RISC-V`芯片中，有多个`CPU`核，`MMU`和`TLB`存在于每一个`CPU`核里面。`RISC-V`处理器有`L1 cache，L2 Cache`，有些`cache`是根据物理地址索引的，有些`cache`是根据虚拟地址索引的，由虚拟地址索引的`cache`位于`MMU`之前，由物理地址索引的`cache`位于`MMU`之后。
 
-**Q(Student)**：之前提到，硬件会完成3级 page table的查找，那为什么我们要在XV6中有一个walk函数来完成同样的工作？
+**Q(Student)**：之前提到，硬件会完成3级 `page table`的查找，那为什么我们要在`XV6`中有一个`walk`函数来完成同样的工作？
 
-- **Frans教授**：非常好的问题。这里有几个原因，首先XV6中的walk函数设置了最初的page table，它需要对3级page table进行编程所以它首先需要能模拟3级page table。另一个原因或许你们已经在syscall实验中遇到了，在XV6中，内核有它自己的page table，用户进程也有自己的page table，用户进程指向sys_info结构体的指针存在于用户空间的page table，但是内核需要将这个指针翻译成一个自己可以读写的物理地址。如果你查看copy_in，copy_out，你可以发现内核会通过用户进程的page table，将用户的虚拟地址翻译得到物理地址，这样内核可以读写相应的物理内存地址。这就是为什么在XV6中需要有walk函数的一些原因。
+- **Frans教授**：非常好的问题。这里有几个原因:
+  - 首先`XV6`中的`walk`函数设置了最初的`page table`，它需要对`3`级`page table`进行编程所以它首先需要能模拟3级`page table`。
+  - 另一个原因或许你们已经在`syscall`实验中遇到了，在`XV6`中，内核有它自己的`page table`，用户进程也有自己的`page table`，用户进程指向`sys_info`结构体的指针存在于用户空间的`page table`，但是内核需要将这个指针翻译成一个自己可以读写的物理地址。如果你查看`copy_in，copy_out`，你可以发现内核会通过用户进程的`page table`，将用户的虚拟地址翻译得到物理地址，这样内核可以读写相应的物理内存地址。这就是为什么在XV6中需要有walk函数的一些原因。
 
-**Q(Student)：** 为什么硬件不开发类似于walk函数的接口？这样我们就不用在XV6中用软件实现自己的接口，自己实现还容易有bug。为什么没有一个特殊权限指令，接收虚拟内存地址，并返回物理内存地址？
+**Q(Student)：** 为什么硬件不开发类似于`walk`函数的接口？这样我们就不用在`XV6`中用软件实现自己的接口，自己实现还容易有`bug`。为什么没有一个特殊权限指令，接收虚拟内存地址，并返回物理内存地址？
 
 - Frans教授：其实这就跟你向一个虚拟内存地址写数据，硬件会自动帮你完成工作一样（工作是指翻译成物理地址，并完成数据写入）。你们在page table实验中会完成相同的工作。我们接下来在看XV6的实现的时候会看到更多的内容。
-
 
 在我们介绍XV6之前，有关`page table`我还想说一点。用时髦的话说，`page table`提供了一层抽象。我这里说的抽象就是指从虚拟地址到物理地址的映射。这里的映射关系完全由操作系统控制。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKXQyrwtx5ZQyDCznzw%2F-MK_UI6DE5dlgsYM2EGL%2Fimage.png?alt=media&token=67d5eef6-01f3-495c-8482-73082fd52345)
 
-因为操作系统对于这里的地址翻译有完全的控制，它可以实现各种各样的功能。比如，当一个PTE是无效的，硬件会返回一个page fault，对于这个page fault，操作系统可以更新 page table并再次尝试指令。所以，通过操纵page table，在运行时有各种各样可以做的事情。我们在之后有一节课专门会讲，当出现page fault的时候，操作系统可以做哪些有意思的事情。现在只需要记住，page table是一个无比强大的机制，它为操作系统提供了非常大的灵活性。这就是为什么page table如此流行的一个原因。
+因为操作系统对于这里的地址翻译有完全的控制，它可以实现各种各样的功能。比如，当一个`PTE`是无效的，硬件会返回一个`page fault`，对于这个`page fault`，操作系统可以更新 `page table`并再次尝试指令。所以，通过操纵`page table`，在运行时有各种各样可以做的事情。我们在之后有一节课专门会讲，当出现page fault的时候，操作系统可以做哪些有意思的事情。现在只需要记住，`page table`是一个无比强大的机制，它为操作系统提供了非常大的灵活性。这就是为什么`page table`如此流行的一个原因。
 
 ## 4.5 Kernel Page Table
 
@@ -323,13 +313,15 @@ Q（Student）：我想知道我们是怎么计算page table的物理地址，�
 
 ### 4.5.1 Physical Address
 
-图中的**右半部分的结构完全由硬件设计者决定**。如你们上节课看到的一样，当操作系统启动时，会从地址`0x80000000`开始运行，这个地址其实也是由硬件设计者决定的。具体的来说，如果你们看一个主板：中间是RISC-V处理器，我们现在知道了处理器中有4个核，每个核都有自己的MMU和TLB。处理器旁边就是DRAM芯片。
+图中的**右半部分的结构完全由硬件设计者决定**。如你们上节课看到的一样，当操作系统启动时，会从地址`0x80000000`开始运行，这个地址其实也是由硬件设计者决定的。
+
+如果你们看一个主板：中间是RISC-V处理器，我们现在知道了处理器中有4个核，每个核都有自己的MMU和TLB。处理器旁边就是DRAM芯片。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaZik5ig19xs1OK5WX%2Fimage.png?alt=media&token=c5b6e5e2-30a3-4e91-a0e3-2c8ae7cf9b7d)
 
 主板的设计人员决定了，在完成了虚拟到物理地址的翻译之后，如果得到的物理地址大于`0x80000000`会走向`DRAM`芯片，如果得到的物理地址低于`0x80000000`会走向不同的I/O设备。这是由这个主板的设计人员决定的物理结构。如果你想要查看这里的物理结构，你可以阅读主板的手册，手册中会一一介绍物理地址对应关系。地址`0`是保留的，地址`0x10090000`对应以太网，地址`0x80000000`对应DDR内存，处理器外的易失存储（Off-Chip Volatile Memory），也就是主板上的DRAM芯片。
 
-在你们的脑海里应该要记住这张主板的图片，即使我们接下来会基于你们都知道的C语言程序---QEMU来做介绍，但是最终所有的事情都是由主板硬件决定的。
+在你们的脑海里应该要记住这张主板的图片，即使我们接下来会基于你们都知道的C语言程序---`QEMU`来做介绍，但是最终所有的事情都是由主板硬件决定的。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaa841bcyITdSeXgSv%2Fimage.png?alt=media&token=722903cf-faa3-4e99-8bd3-3198d3a7cf59)
 
@@ -339,66 +331,68 @@ Q（Student）：我想知道我们是怎么计算page table的物理地址，�
 
 **Q(Student)**：当你说这里是由硬件决定的，硬件是特指CPU还是说CPU所在的主板？
 
-- **Frans教授**：CPU所在的主板。CPU只是主板的一小部分，DRAM芯片位于处理器之外。是主板设计者将处理器，DRAM和许多I/O设备汇总在一起。对于一个操作系统来说，CPU只是一个部分，I/O设备同样也很重要。所以当你在写一个操作系统时，你需要同时处理CPU和I/O设备，比如你需要向互联网发送一个报文，操作系统需要调用网卡驱动和网卡来实际完成这个工作。
+- **Frans教授**：**CPU所在的主板**。CPU只是主板的一小部分，DRAM芯片位于处理器之外。是主板设计者将处理器，DRAM和许多I/O设备汇总在一起。对于一个操作系统来说，CPU只是一个部分，I/O设备同样也很重要。所以当你在写一个操作系统时，你需要同时处理CPU和I/O设备，比如你需要向互联网发送一个报文，操作系统需要调用网卡驱动和网卡来实际完成这个工作。
 
 **回到最初那张图的右侧：物理地址的分布**。
 
 - 可以看到最下面是未被使用的地址，这与主板文档内容是一致的（地址为0）。
-- 地址0x1000是boot ROM的物理地址，当你对主板上电，主板做的第一件事情就是运行存储在boot ROM中的代码
-- 当boot完成之后，会跳转到地址0x80000000，操作系统需要确保那个地址有一些数据能够接着启动操作系统。
-
-![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaY9xY8MaH5XTiwuBm%2Fimage.png?alt=media&token=3adbe628-da78-472f-8e7b-3d0b1d3177b5)
+- 地址`0x1000`是`boot ROM`的物理地址，当你对主板上电，主板做的第一件事情就是运行存储在`boot ROM`中的代码
+- 当`boot`完成之后，会跳转到地址`0x80000000`，操作系统需要确保那个地址有一些数据能够接着启动操作系统。
 
 这里还有一些其他的I/O设备：
 
-- **PLIC是中断控制器**（Platform-Level Interrupt Controller）我们下周的课会讲。
-- **CLINT（Core Local Interruptor）** 也是中断的一部分。所以多个设备都能产生中断，需要中断控制器来将这些中断路由到合适的处理函数。地址`0x02000000`对应CLINT，当你向这个地址执行读写指令，你是向实现了CLINT的芯片执行读写。这里你可以认为你直接在与设备交互，而不是读写物理内存。
-- **UART0（Universal Asynchronous Receiver/Transmitter）** 负责与Console和显示器交互。
-- **VIRTIO disk**，与磁盘进行交互。
+- **PLIC是中断控制器**（`Platform-Level Interrupt Controller`）我们下周的课会讲。
+- **CLINT（`Core Local Interruptor`）** 也是中断的一部分。所以多个设备都能产生中断，需要中断控制器来将这些中断路由到合适的处理函数。地址`0x02000000`对应CLINT，当你向这个地址执行读写指令，你是向实现了CLINT的芯片执行读写。这里你可以认为你直接在与设备交互，而不是读写物理内存。
+- **UART0（`Universal Asynchronous Receiver/Transmitter`）** 负责与`Console`和显示器交互。
+- **`VIRTIO disk`**，与磁盘进行交互。
+  
+![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaY9xY8MaH5XTiwuBm%2Fimage.png?alt=media&token=3adbe628-da78-472f-8e7b-3d0b1d3177b5)
 
 > **学生提问2**
 
-**Q(Student)**：确认一下，低于0x80000000的物理地址，不存在于DRAM中，当我们在使用这些地址的时候，指令会直接走向其他的硬件，对吗？
+**Q(Student)**：确认一下，低于`0x80000000`的物理地址，不存在于`DRAM`中，当我们在使用这些地址的时候，指令会直接走向其他的硬件，对吗？
 
-- **Frans教授**：是的。高于0x80000000的物理地址对应DRAM芯片，但是对于例如以太网接口，也有一个特定的低于0x80000000的物理地址，我们可以对这个叫做内存映射I/O（Memory-mapped I/O）的地址执行读写指令，来完成设备的操作。
+- **Frans教授**：是的。高于`0x80000000`的物理地址对应DRAM芯片，但是对于例如以太网接口，也有一个特定的低于`0x80000000的`物理地址，我们可以对这个叫做内存映射`I/O`（`Memory-mapped I/O`）的地址执行读写指令，来完成设备的操作。
 
 **Q(Student)**：为什么物理地址最上面一大块标为未被使用？
 
 - Frans教授：物理地址总共有2^56那么多，但是你不用在主板上接入那么多的内存。所以不论主板上有多少DRAM芯片，总是会有一部分物理地址没有被用到。实际上在XV6中，我们限制了内存的大小是128MB。
 
-**Q(Student)**：当读指令从CPU发出后，它是怎么路由到正确的I/O设备的？比如说，当CPU要发出指令时，它可以发现现在地址是低于0x80000000，但是它怎么将指令送到正确的I/O设备？
+**Q(Student)**：当读指令从`CPU`发出后，它是怎么路由到正确的`I/O`设备的？比如说，当CPU要发出指令时，它可以发现现在地址是低于`0x80000000`，但是它怎么将指令送到正确的`I/O`设备？
 
-- Frans教授：你可以认为在RISC-V中有一个多路输出选择器（demultiplexer）。
+- Frans教授：你可以认为在RISC-V中有一个多路输出选择器（`demultiplexer`）。
 
 ### 4.5.2 Virtual Address
 
 接下来我会切换到第一张图的左边，这就是XV6的虚拟内存地址空间。**当机器刚刚启动时，还没有可用的page**，XV6操作系统会设置好内核使用的虚拟地址空间，也就是这张图左边的地址分布。
 
-因为我们想让XV6尽可能的简单易懂，所以这里的**虚拟地址到物理地址的映射，大部分是相等的关系**。比如说内核会按照这种方式设置`page table`，虚拟地址0x02000000对应物理地址0x02000000。这意味着**左侧低于PHYSTOP的虚拟地址，与右侧使用的物理地址是一样的。**这里的箭头都是水平的，因为这里是完全相等的映射。
+因为我们想让XV6尽可能的简单易懂，所以这里的**虚拟地址到物理地址的映射，大部分是相等的关系**。比如说内核会按照这种方式设置`page table`，虚拟地址`0x02000000`对应物理地址`0x02000000`。这意味着**左侧低于PHYSTOP的虚拟地址，与右侧使用的物理地址是一样的。**这里的箭头都是水平的，因为这里是**完全相等的映射**。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKaY9xY8MaH5XTiwuBm%2Fimage.png?alt=media&token=3adbe628-da78-472f-8e7b-3d0b1d3177b5)
 
 除此之外，这里还有两件重要的事情：
 
-第一件事情是，有一些page在虚拟内存中的地址很靠后，比如`kernel stack`在虚拟内存中的地址就很靠后。这是因为在它之下有一个未被映射的`Guard page`，这个`Guard page`对应的`PTE`的`Valid` 标志位没有设置，这样，如果`kernel stack`耗尽了，它会溢出到`Guard page`，但是因为Guard page的PTE中Valid标志位未设置，会导致立即触发page fault，这样的结果好过内存越界之后造成的数据混乱。立即触发一个panic（也就是page fault），你就知道kernel stack出错了。同时我们也又不想浪费物理内存给Guard page，所以Guard page不会映射到任何物理内存，它只是占据了虚拟地址空间的一段靠后的地址。
-同时，kernel stack被映射了两次，在靠后的虚拟地址映射了一次，在PHYSTOP下的Kernel data中又映射了一次，但是实际使用的时候用的是上面的部分，因为有Guard page会更加安全。
+**第一件事情是，有一些page在虚拟内存中的地址很靠后**
+
+比如`kernel stack`在虚拟内存中的地址就很靠后。这是因为在它之下有一个未被映射的`Guard page`，这个`Guard page`对应的`PTE`的`Valid` 标志位没有设置，这样，如果`kernel stack`耗尽了，它会溢出到`Guard page`，但是因为`Guard page`的`PTE`中`Valid`标志位未设置，会导致立即触发`page fault`，这样的结果好过内存越界之后造成的数据混乱。立即触发一个`panic`（也就是`page fault`），你就知道`kernel stack`出错了。同时我们也又不想浪费物理内存给`Guard page`，所以`Guard page`不会映射到任何物理内存，它只是占据了虚拟地址空间的一段靠后的地址。
+同时，`kernel stack`被映射了两次，在靠后的虚拟地址映射了一次，在`PHYSTOP`下的`Kernel data`中又映射了一次，但是实际使用的时候用的是上面的部分，因为有`Guard page`会更加安全。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MK_UbCc81Y4Idzn55t8%2F-MKbZEkzbzbKYgRRedXU%2Fimage.png?alt=media&token=2167acef-e76c-4d0c-81b0-f5175475793f)
 
-这是众多你可以通过page table实现的有意思的事情之一。你可以**向同一个物理地址映射两个虚拟地址**，你可以不**将一个虚拟地址映射到物理地址**。可以是一对一的映射，一对多映射，多对一映射。XV6至少在1-2个地方用到类似的技巧。这的kernel stack和Guard page就是XV6基于page table使用的有趣技巧的一个例子。
+这是众多你可以通过`page table`实现的有意思的事情之一。你可以**向同一个物理地址映射两个虚拟地址**，你可以不**将一个虚拟地址映射到物理地址**。可以是一对一的映射，一对多映射，多对一映射。XV6至少在1-2个地方用到类似的技巧。这的`kernel stack`和`Guard page`就是`XV6`基于`page table`使用的有趣技巧的一个例子。
 
 **第二件事情是权限**。
 
-- 例如`Kernel text page`被标位`R-X`，意味着你可以读它，也可以在这个地址段执行指令，但是你不能向`Kernel text`写数据。通过设置权限我们可以尽早的发现Bug从而避免Bug。
-- 对于`Kernel data`需要能被写入，所以它的标志位是`RW-`，但是你不能在这个地址段运行指令，所以它的X标志位未被设置。（注，所以，kernel text用来存代码，代码可以读，可以运行，但是不能篡改，kernel data用来存数据，数据可以读写，但是不能通过数据伪装代码在kernel中运行）
+- 例如`Kernel text page`被标位`R-X`，意味着你可以读它，也可以在这个地址段执行指令，但是你不能向`Kernel text`写数据。**通过设置权限我们可以尽早的发现`Bug`从而避免`Bug`。**
+- 对于`Kernel data`需要能被写入，所以它的标志位是`RW-`，但是你不能在这个地址段运行指令，所以它的X标志位未被设置。（注，所以，`kernel text`用来存代码，代码可以读，可以运行，但是不能篡改，`kernel data`用来存数据，数据可以读写，但是不能通过数据伪装代码在`kernel`中运行）
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKb_jHb6u2XMiYkH2i0%2F-MKeHhKXkn4VMBskZjDS%2Fimage.png?alt=media&token=64e16ad2-c25b-4535-bb67-cc340934c027)
 
 > **学生提问**
 
-**Q(Student):** 对于不同的进程会有不同的kernel stack吗？
+**Q(Student):** 对于不同的进程会有不同的`kernel stack`吗？
 
-- Frans：答案是的。每一个用户进程都有一个对应的kernel stack
+- Frans：答案是的。每一个用户进程都有一个对应的`kernel stack`
 
 **Q(Student):** 用户程序的虚拟内存会映射到未使用的物理地址空间吗？
 
@@ -412,11 +406,11 @@ XV6使用这段free memory来存放用户进程的page table，text和data。如
 
 **Q(Student):** 如果多个进程都将内存映射到了同一个物理位置，这里会优化合并到同一个地址吗？
 
-- Frans教授：XV6不会做这样的事情，但是page table实验中有一部分就是做这个事情。真正的操作系统会做这样的工作。当你们完成了page table实验，你们就会对这些内容更加了解。
+- Frans教授：XV6不会做这样的事情，但是`page table`实验中有一部分就是做这个事情。真正的操作系统会做这样的工作。当你们完成了`page table`实验，你们就会对这些内容更加了解。
 
-**Q(Student)**：每个进程都会有自己的3级树状page table，通过这个page table将虚拟地址翻译成物理地址。所以看起来当我们将内核虚拟地址翻译成物理地址时，我们并不需要kernel的page table，因为进程会使用自己的树状page table并完成地址翻译。
+**Q(Student)**：每个进程都会有自己的3级树状`page table`，通过这个`page table`将虚拟地址翻译成物理地址。所以看起来当我们将内核虚拟地址翻译成物理地址时，我们并不需要`kernel`的`page table`，因为进程会使用自己的树状`page table`并完成地址翻译。
 
-- Frans教授：当kernel创建了一个进程，针对这个进程的page table也会从Free memory中分配出来。内核会为用户进程的page table分配几个page，并填入PTE。在某个时间点，当内核运行了这个进程，内核会将进程的根page table的地址加载到SATP中。从那个时间点开始，处理器会使用内核为那个进程构建的虚拟地址空间。
+- Frans教授：当`kernel`创建了一个进程，针对这个进程的`page table`也会从`Free memory`中分配出来。内核会为用户进程的`page table`分配几个`page`，并填入`PTE`。在某个时间点，当内核运行了这个进程，内核会将进程的根`page table`的地址加载到`SATP`中。从那个时间点开始，处理器会使用内核为那个进程构建的虚拟地址空间。
 
 **Q(Student)**：所以内核为进程放弃了一些自己的内存，但是进程的虚拟地址空间理论上与内核的虚拟地址空间一样大，虽然实际中肯定不会这么大。
 
@@ -434,7 +428,58 @@ XV6使用这段free memory来存放用户进程的page table，text和data。如
 
 首先，我们来做一个的常规操作，启动我们的`XV6`，这里`QEMU`实现了主板，同时我们打开`gdb`。
 
-![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKgiYv2CppKnuZEsKO3%2F-MKjLcF6o4ufpR5OzzYJ%2Fimage.png?alt=media&token=e5d42221-bdd8-4eeb-adb8-9198c4a1cfc2)
+```bash
+Last login: Tue Dec  6 22:37:32 on ttys002
+(base) iiixv@IIIXVdeMacBook-Air xv6-riscv % make cpus=1 qemu-gdb
+*** Now run 'gdb' in another window.
+qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 3 -nographic -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 -S -gdb tcp::25501
+
+xv6 kernel is booting
+
+ ```
+
+```bash
+Last login: Wed Dec 21 20:58:44 on ttys002
+(base) iiixv@IIIXVdeMacBook-Air xv6-riscv % riscv64-unknown-elf-gdb
+GNU gdb (GDB) 10.1
+Copyright (C) 2020 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "--host=arm-apple-darwin21.4.0 --target=riscv64-unknown-elf".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word".
+warning: File "/Users/iiixv/Documents/xv6-riscv/.gdbinit" auto-loading has been declined by your `auto-load safe-path' set to "$debugdir:$datadir/auto-load".
+To enable execution of this file add
+	add-auto-load-safe-path /Users/iiixv/Documents/xv6-riscv/.gdbinit
+line to your configuration file "/Users/iiixv/.gdbinit".
+To completely disable this security protection add
+	set auto-load safe-path /
+line to your configuration file "/Users/iiixv/.gdbinit".
+For more information about this security protection see the
+"Auto-loading safe path" section in the GDB manual.  E.g., run from the shell:
+	info "(gdb)Auto-loading safe path"
+(gdb) source .gdbinit
+The target architecture is set to "riscv:rv64".
+warning: No executable has been specified and target does not support
+determining executable automatically.  Try using the "file" command.
+0x0000000000001000 in ?? ()
+(gdb) b kvminit
+Breakpoint 1 at 0x8000123a: file kernel/vm.c, line 55.
+(gdb) c
+Continuing.
+
+Thread 1 hit Breakpoint 1, kvminit () at kernel/vm.c:55
+55	{
+(gdb) 
+ ```
 
 上一次我们看了`boot`的流程，我们跟到了`main`函数。`main`函数中调用的一个函数是`kvminit（3.9）`，这个函数会设置好`kernel`的地址空间。`kvminit`的代码如下图所示：
 
@@ -544,11 +589,11 @@ kvminit(void)
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKoqX3juAGIEtw1zvSN%2F-MKwKP7Z063SggHz4lMz%2Fimage.png?alt=media&token=bcc6e605-b9ba-4d4f-a35b-f164f4c524f9)
 
-- **Frans**：不会。这里`KERNBASE`是`0x80000000`，这是内存开始的地址。`kvmmap`的第三个参数是`size`，`etext`是`kernel text`的最后一个地址，`etext - KERNBASE`会返回`kernel text`的字节数，我不确定这块有多大，大概是`60-90`个`page`，这部分是`kernel`的`text`部分。`PHYSTOP`是物理内存的最大位置，`PHYSTOP-text`是`kernel`的`data`部分。会有足够的`DRAM`来完成这里的映射。
+- **Frans**：不会。这里`KERNBASE`是`0x80000000`，这是内存开始的地址。`kvmmap`的第三个参数是`size`，`etext`是`kernel text`的最后一个地址，`etext - KERNBASE`会返回`kernel text`的字节数，我不确定这块有多大，大概是`60-90`个`page`，这部分是`kernel`的`text`部分。`PHYSTOP`是物理内存的最大位置，`PHYSTOP-text`是`kernel`的`data`部分。会有足够的`DRAM`来完成这里的映射。`etext`是内核最后一条指令的地址。
 
 ## 4.7 kvminithart 函数
 
-之后，`kvminit`函数返回了，在`main`函数中，我们运行到了`kvminithart`函数。
+`kvminit`函数返回了，在`main`函数中，我们运行到了`kvminithart`函数。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MKgiYv2CppKnuZEsKO3%2F-MKjffmTgmjxQO-BCcin%2Fimage.png?alt=media&token=050d4673-2526-43c7-83aa-6b623e840074)
 
@@ -563,10 +608,12 @@ kvminit(void)
 为什么这里能正常工作呢？因为`kernel page`的映射关系中，虚拟地址到物理地址是完全相等的。所以，在我们打开虚拟地址翻译硬件之后，地址翻译硬件会将一个虚拟地址翻译到相同的物理地址。所以实际上，我们最终还是能通过内存地址执行到正确的指令，因为经过地址翻译`0x80001110`还是对应`0x80001110`。
 管理虚拟内存的一个难点是，一旦执行了类似于`SATP`这样的指令，你相当于将一个`page table`加载到了SATP寄存器，你的世界完全改变了。现在每一个地址都会被你设置好的`page table`所翻译。那么假设你的`page table`设置错误了，会发生什么呢？有人想回答这个问题吗？
 
-- 学生A回答：你可能会覆盖kernel data。
-- 学生B回答：会产生page fault。
+- 学生A回答：你可能会覆盖`kernel data`。
+- 学生B回答：会产生`page fault`。
 
-是的，因为`page table`没有设置好，虚拟地址可能根本就翻译不了，那么内核会停止运行并`panic`。所以，如果`page table`中有`bug`，你将会看到奇怪的错误和崩溃，这导致了`page table`实验将会比较难。如果你不够小心，或者你没有完全理解一些细节，你可能会导致`kernel`崩溃，这将会花费一些时间和精力来追踪背后的原因。但这就是管理虚拟内存的一部分，因为对于一个这么强大的工具，如果出错了，相应的你也会得到严重的后果。我并不是要给你们泼凉水，哈哈。另一方面，这也很有乐趣，经过了`page table`实验，你们会真正理解虚拟内存是什么，虚拟内存能做什么。
+是的，因为`page table`没有设置好，虚拟地址可能根本就翻译不了，那么内核会停止运行并`panic`。
+
+所以，如果`page table`中有`bug`，你将会看到奇怪的错误和崩溃，这导致了`page table`实验将会比较难。如果你不够小心，或者你没有完全理解一些细节，你可能会导致`kernel`崩溃，这将会花费一些时间和精力来追踪背后的原因。但这就是管理虚拟内存的一部分，因为对于一个这么强大的工具，如果出错了，相应的你也会得到严重的后果。我并不是要给你们泼凉水，哈哈。另一方面，这也很有乐趣，经过了`page table`实验，你们会真正理解虚拟内存是什么，虚拟内存能做什么。
 
 ## 4.8 walk 函数
 
