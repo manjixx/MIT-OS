@@ -2,13 +2,11 @@
 
 ## 8.1 Page Fault Basics
 
-
 > **准备工作**
 
 [阅读4.6节](https://pdos.csail.mit.edu/6.828/2020/xv6/book-riscv-rev1.pdf)
 
 > **课程内容**
-
 
 今天课程的内容对应了后面几个实验，包括如下内容：
 
@@ -20,6 +18,7 @@
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMB4xWfIo1Jb_zgmcjc%2F-MMBCAgW3JRqkqu36wni%2Fimage.png?alt=media&token=27d19200-0834-46c3-a4b4-a78eba82c89f)
 
 注：
+
 - 在XV6中，上述功能都没实现。在XV6中采用了非常保守的处理方式，**一旦用户空间进程触发了page fault，会导致进程被杀掉**。
 - 因此，本节课对于代码的讲解会比较少，相应的在设计层面会有更多的内容，毕竟我们也没有代码可以讲解（XV6中没有实现）。
 
@@ -52,16 +51,13 @@
 
 - **触发`page fault`的指令的地址**。从上节课可以知道，作为`trap`处理代码的一部分，这个地址存放在`SEPC（Supervisor Exception Program Counter）`寄存器中，并同时会保存在`trapframe->epc`（注，详见lec06）中。以便在`page fault handler`中修复`page table`，并重新执行对应的指令。理想情况下，修复完`page table`之后，指令就可以无错误的运行了。
 
-
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMNpt2e_uc39XgzmDVX%2F-MMNr1p3hOfGCXnPFEAx%2Fimage.png?alt=media&token=5a99af6a-d462-474e-9388-3bfbbe1caa26)
-
 
 **从硬件和XV6的角度来说，当出现了page fault，现在有了3个极其有价值的信息，分别是：**
 
 - 引起`page fault`的内存地址
 - 引起`page fault`的原因类型
 - 引起`page fault`时的程序计数器值，表明了`page fault`在用户空间发生的位置
-
 
 接下来我们将查看不同虚拟内存功能的实现机制，来帮助我们理解如何利用`page fault handler`修复`page table`并做一些有趣的事情。
 
@@ -76,7 +72,6 @@
 - 当`sbrk`实际发生或者被调用的时候，内核会分配一些物理内存，并将这些内存映射到用户应用程序的地址空间，然后将内存内容初始化为0，再返回`sbrk`系统调用。这样，应用程序可以通过多次`sbrk`系统调用来增加它所需要的内存。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMSxponnGmjT-9o9zTI%2F-MMSzCvRiaVMkJF9feJx%2Fimage.png?alt=media&token=493295ce-507e-44a9-a4d4-d400b9f14aee)
-
 
 在XV6中，**`sbrk`的实现默认是`eager allocation`**。这表示了，一旦调用了`sbrk`，内核会立即分配应用程序所需要的物理内存。但是实际上，对于应用程序来说很难预测自己需要多少内存，所以通常来说，应用程序倾向于申请多于自己所需要的内存。这意味着，进程的内存消耗会增加许多，但是有部分内存永远也不会被应用程序所使用到。
 
@@ -95,6 +90,7 @@
 所以，当看到了一个`page fault`，相应的虚拟地址小于当前`p->sz`，同时大于`stack`，那么我们就知道这是一个来自于`heap`的地址，但是内核还没有分配任何物理内存。
 
 **所以对于这个`page fault`的响应也理所当然的直接明了**：
+
 - 在`page fault handler`中，通过`kalloc`函数分配一个内存`page`；
 - 初始化这个`page`内容为`0`；
 - 将这个内存`page`映射到`user page table`中；
@@ -157,7 +153,6 @@ sys_sbrk(void)
 ```
 
 > **启动XV6**
-
 
 修改完之后启动XV6，并且执行`“echo hi”`，会得到一个`page fault`。**出现`page fault`的原因**：在`Shell`中执行程序，`Shell`会先`fork`一个子进程，子进程会通过`exec`执行`echo`（注，详见1.9）。在这个过程中，`Shell`会申请一些内存，**所以`Shell`会调用`sys_sbrk`**，然后就出错了（注，因为前面修改了代码，调用sys_sbrk不会实际分配所需要的内存）。
 
@@ -318,6 +313,7 @@ usertrap(void)
 ```
 
 上述代码中：
+
 - 首先打印一些调试信息。
 - 然后分配一个物理内存`page`，如果`ka`等于`0`，表明没有物理内存, **现在`OOM`了，我们会杀掉进程**。
 - 如果有物理内存，**首先会将内存内容设置为0**，**之后将物理内存`page`指向用户地址空间中合适的虚拟内存地址**。具体来说:
@@ -333,6 +329,7 @@ usertrap(void)
 ```
 
 这里有两个`page fault`:
+
 - 第一个对应的虚拟内存地址是`0x4008`
 - 但是很明显在处理上述`page fault`时，又产生了另一个`page fault 0x13f48`。现在唯一的问题是，`uvmunmap`在报错，一些它尝试`unmap`的`page`并不存在。这里`unmap`的内存是什么？
   - 学生回答：之前`lazy allocation`但是又没有实际分配的内存。
@@ -370,6 +367,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free){
   - Frans教授：为什么之前的panic会存在？对于未修改的XV6，永远也不会出现用户内存未map的情况，所以一旦出现这种情况需要panic。但是现在我们更改了XV6，所以我们需要去掉这里的panic，因为之前的不可能变成了可能。
 
 这部分内容对于下一个实验有很大的帮助，实际上这是下一个实验3个部分中的一个，但是很明显这部分不足以完成下一个`lazy lab`。我们这里做了一些修改，但是很多地方还是有可能出错。就像有人提到的，我这里并没有检查触发`page fault`的虚拟地址是否小于`p->sz`。**还有其他的可能出错的地方吗？**
+
 - 学生回答：通过`sbrk`增加的用户进程的内存数是一个整型数而不是一个无符号整型数，可能会传入负数。
 - 是的，可能会使用负数，这意味着缩小用户内存。当我们在缩小用户内存时，我们也需要小心一些。实际上，在一个操作系统中，我们可能会在各种各样的用户场景中使用这里的PTE，对于不同的用户场景我们或许需要稍微修改XV6，这就是接下来的lazy lab的内容。你们需要完成足够多的修改，才能通过所有的测试用例。
 
@@ -378,6 +376,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free){
 > **Zero Fill on Demand**
 
 当查看一个用户程序的地址空间时，存在三个区域，并且当编译器在生成二进制文件时，编译器会填入这三个区域。
+
 - `text`区域：`text`区域是程序的指令
 - `data`区域：`data`区域存放的是初始化了的全局变量
 - `BSS`区域：`BSS`区域包含了未被初始化或者初始化为0的全局或者静态变量），之所以这些变量要单独列出来，是因为例如你在C语言中定义了一个大的矩阵作为全局变量，它的元素初始值都是0，为什么要为这个矩阵分配内存呢？其实只需要记住这个矩阵的内容是0就行。
@@ -394,6 +393,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free){
 当然这里的`mapping`需要非常的小心，**不能允许对于这个`page`执行写操作**，因为所有的虚拟地址空间`page`都期望`page`的内容是全`0`，**所以这里的`PTE`都是只读的**。
 
 之后在某个时间点，**应用程序尝试写`BSS`中的一个`page`时**，比如说需要更改一两个变量的值，我们会得到`page fault`。那么，对于这个特定场景中的`page fault`我们该做什么呢？
+
 - 学生回答：应该创建一个新的`page`，将其内容设置为`0`，并重新执行指令。
 
 是的，完全正确。假设`store`指令发生在`BSS`最顶端的`page`中。我们想要做的是，在物理内存中申请一个新的内存`page`，将其内容设置为`0`，因为这个内存的预期内容为0。之后需要更新这个`page`的`mapping`关系，**首先`PTE`要设置成可读可写，然后将其指向新的物理`page`。这里相当于更新了`PTE`，之后我们可以重新执行指令。**
@@ -417,8 +417,56 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free){
 
 ## 8.4 Copy On Write Fault
 
-## 8.5 Demand Paging 
+> **copy-on-write fork (COW fork)**
+
+当`Shell`处理指令时，它会通过`fork`创建一个子进程。`fork`会创建一个`Shell`进程的拷贝，所以这时**有一个父进程（原来的`Shell`）和一个子进程。**
+
+**最开始有一个父进程的虚拟地址空间，然后有了子进程的虚拟地址空间**。
+
+- 在物理内存中，`XV6`中的`Shell`通常会有`4`个`page`，当调用`fork`时，**基本上就是创建`4`个新的`page`，并将父进程`page`的内容拷贝到`4`个新的子进程的`page`中。**
+- **`Shell`的子进程执行的第一件事情:** 调用`exec`运行一些其他程序，比如运行`echo`，而`exec`做的第一件事情就是释放这些`page`，并分配新的`page`来包含`echo`相关的内容。这里看起来有点浪费。
+
+![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMidiGrWWP5Do6c9hwf%2F-MMjs294uvJMihNXEnSm%2Fimage.png?alt=media&token=bf43b7d6-b65a-4a61-9f98-2a3fde9fb4c1)
+
+> **优化**
+
+对于这个特定场景有一个**非常有效的优化**：
+
+- 当创建子进程时，与其创建、分配并拷贝内容到新的物理内存，其实可以直接共享父进程的物理内存`page`。所以这里，可以设置子进程的`PTE`指向父进程对应的物理内存`page`。**因为在父进程和子进程之间需要有强隔离性**，所以为了确保进程间的隔离性，**可以将这里的父进程和子进程的`PTE`的标志位都设置成只读的。**
+- **在某个时间点，当需要更改内存的内容时，会得到`page fault`**。因为父进程和子进程都会继续运行，而父进程或者子进程都可能会执行`store`指令来更新一些全局变量，这时就会触发`page fault`，因为现在在向一个只读的`PTE`写数据。
+- **在得到`page fault`之后，需要拷贝相应的物理`page`。** 假设现在是子进程在执行`store`指令，那么会分配一个新的物理内存`page`，**然后将`page fault`相关的物理内存`page`拷贝到新分配的物理内存`page`中，并将新分配的物理内存`page`映射到子进程**。这时，新分配的物理内存`page`只对子进程的地址空间可见，所以可以将相应的`PTE`设置成可读写，并且可以重新执行`store`指令。
+- 实际上，对于触发刚刚`page fault`的物理`page`，**因为现在只对父进程可见，相应的`PTE`对于父进程也变成可读写的了**。
+
+综上所述：拷贝了一个`page`，将新的`page`映射到相应的用户地址空间，并重新执行用户指令。重新执行用户指令是指调用`userret`函数（注，详见6.8），也即是lec06中介绍的返回到用户空间的方法。
+
+![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMidiGrWWP5Do6c9hwf%2F-MMjwgQ0xT6_bDgbtOid%2Fimage.png?alt=media&token=8d124d47-9789-4851-9c60-078549f42a1f)
+
+- **学生提问：** 我们如何发现父进程写了这部分内存地址？是与子进程相同的方法吗？
+  - Frans教授：是的，因为子进程的地址空间来自于父进程的地址空间的拷贝。如果我们使用了特定的虚拟地址，因为地址空间是相同的，不论是父进程还是子进程，都会有相同的处理方式。
+- 学生提问：对于一些没有父进程的进程，比如系统启动的第一个进程，它会对于自己的PTE设置成只读的吗？还是设置成可读写的，然后在fork的时候再修改成只读的？
+  - Frans教授：这取决于你。实际上在lazy lab之后，会有一个copy-on-write lab。在这个lab中，你自己可以选择实现方式。当然最简单的方式就是将PTE设置成只读的，当你要写这些page时，你会得到一个page fault，之后你可以再按照上面的流程进行处理。
+- 学生提问：因为我们经常会拷贝用户进程对应的page，内存硬件有没有实现特定的指令来完成拷贝，因为通常来说内存会有一些读写指令，但是因为我们现在有了从page a拷贝到page b的需求，会有相应的拷贝指令吗？
+  - Frans教授：x86有硬件指令可以用来拷贝一段内存。但是RISC-V并没有这样的指令。当然在一个高性能的实现中，所有这些读写操作都会流水线化，并且按照内存的带宽速度来运行。在我们这个例子中，我们只需要拷贝1个page，对于一个未修改的XV6系统，我们需要拷贝4个page。所以这里的方法明显更好，因为内存消耗的更少，并且性能会更高，fork会执行的更快。
+- 学生提问：当发生page fault时，我们其实是在向一个只读的地址执行写操作。内核如何能分辨现在是一个copy-on-write fork的场景，而不是应用程序在向一个正常的只读地址写数据。是不是说默认情况下，用户程序的PTE都是可读写的，除非在copy-on-write fork的场景下才可能出现只读的PTE？
+  - Frans教授：内核必须要能够识别这是一个copy-on-write场景。几乎所有的page table硬件都支持了这一点。我们之前并没有提到相关的内容，下图是一个常见的多级page table。对于PTE的标志位，我之前介绍过第0bit到第7bit，但是没有介绍最后两位RSW。这两位保留给supervisor software使用，supervisor softeware指的就是内核。内核可以随意使用这两个bit位。所以可以做的一件事情就是，将bit8标识为当前是一个copy-on-write page。
+  
+  ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MMidiGrWWP5Do6c9hwf%2F-MMk2SxJ_cq94IMH6I6W%2Fimage.png?alt=media&token=e0dad55b-5c74-4da0-a3b0-a89d462eda58)
+    当内核在管理这些page table时，对于copy-on-write相关的page，内核可以设置相应的bit位，这样当发生page fault时，我们可以发现如果copy-on-write bit位设置了，我们就可以执行相应的操作了。否则的话，比如说lazy allocation，我们就做一些其他的处理操作。
+    在copy-on-write lab中，你们会使用RSW在PTE中设置一个copy-on-write标志位。
+
+> **其他注意事项**
+
+在copy-on-write lab中，还有个细节需要注意。目前在XV6中，除了`trampoline page`外，一个物理内存`page`只属于一个用户进程。`trampoline page`永远也不会释放，所以也不是什么大问题。**但是对于这里的物理内存`page`，现在有多个用户进程或者说多个地址空间都指向了相同的物理内存`page`**，举个例子，当父进程退出时我们需要更加的小心，因为我们要判断是否能立即释放相应的物理page。如果有子进程还在使用这些物理page，而内核又释放了这些物理page，我们将会出问题。那么现在释放内存page的依据是什么呢？
+我们需要对于每一个物理内存`page`的引用进行计数，当我们释放虚拟`page`时，**我们将物理内存`page`的引用数减1，如果引用数等于`0`，那么我们就能释放物理内存`page`。**所以在`copy-on-write lab`中，需要引入一些额外的数据结构或者元数据信息来完成引用计数。
+
+
+- 学生提问：我们应该在哪存储这些引用计数呢？因为如果我们需要对每个物理内存page的引用计数的话，这些计数可能会有很多。
+  - Frans教授：对于每个物理内存page，我们都需要做引用计数，也就是说对于每4096个字节，我们都需要维护一个引用计数（似乎并没有回答问题）。
+- 学生提问：我们可以将引用计数存在RSW对应的2个bit中吗？并且限制不超过4个引用。
+  - Frans教授：讲道理，如果引用超过了4次，那么将会是一个问题。因为一个内存引用超过了4次，你将不能再使用这里的优化了。但是这里的实现方式是自由的。
+- 学生提问：真的有必要额外增加一位来表示当前的page是copy-on-write吗？因为内核可以维护有关进程的一些信息...
+  - Frans教授：是的，你可以在管理用户地址空间时维护一些其他的元数据信息，这样你就知道这部分虚拟内存地址如果发生了page fault，那么必然是copy-on-write场景。实际上，在后面的一个实验中，你们需要出于相同的原因扩展XV6管理的元数据。在你们完成这些实验时，具体的实现是很自由的。
+
+## 8.5 Demand Paging
 
 ## 8.6 Memory Mapped Files
-
-
