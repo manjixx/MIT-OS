@@ -1,6 +1,6 @@
 # Lec 03. OS Organization and System Calls
 
-- [Lec 03 OS Organization and System Calls](#lec-03-os-organization-and-system-calls)
+- [Lec 03. OS Organization and System Calls](#lec-03-os-organization-and-system-calls)
   - [3.1 课程回顾](#31-课程回顾)
   - [3.2 OS的隔离性](#32-os的隔离性)
   - [3.3 OS的防御性](#33-os的防御性)
@@ -20,28 +20,18 @@
   - [3.8 QEMU底层原理](#38-qemu底层原理)
   - [3.9 XV6 启动过程](#39-xv6-启动过程)
 
-- Frans Kaashoek
-- 课程回顾
-- 操作系统的隔离性与防御性
-- 硬件对强隔离的支持
-- User/Kernel mode切换
-- 宏内核 VS 微内核(Monolithic Kernel vs Micro Kernel)
-- 编译运行kernel
-- QEMU
-- XV6启动过程
-
 ## 3.1 课程回顾
 
 > **本节课内容**
 
-- Isolation,**隔离性**是设计操作系统组织结构的**驱动力**。
-- Kernel和User mode:这两种模式用来隔离操作系统内核和用户应用程序。
-- System calls: 系统调用是你的应用程序能够转换到内核执行的基本方法，这样你的用户态应用程序才能使用内核服务。
+- **Isolation(隔离性)**：设计操作系统组织结构的**驱动力**。
+- **Kernel 和 User mode**：隔离操作系统内核和用户应用程序。
+- **System calls**：应用程序能够转换到内核执行的基本方法，这样用户态应用程序才能使用内核服务。
 - 最后我们会看到所有的这些是如何以一种简单的方式在XV6中实现。
 
 > **课程内容回顾**
 
-- 首先，会有类似于Shell，echo，find或者任何你实现的工具程序，这些**程序**运行在操作系统之上。
+- 首先，会有类似于`shell，echo，find`或者任何你实现的工具程序，这些**程序**运行在操作系统之上。
 - 操作系统又抽象了一些**硬件资源**，例如磁盘，CPU。
 - 通常来说操作系统和应用程序之前的接口被称为**系统调用接口**（System call interface），我们这门课程看到的接口都是Unix风格的接口。基于这些Unix接口，你们在lab1中，完成了不同的应用程序。
 
@@ -51,8 +41,8 @@ lab1 主要集中在理解上图中的应用程序到操作系统内核之间的
 
 ## 3.2 OS的隔离性
 
-- 介绍一下隔离性（isolation）
-- 介绍为什么它很重要以及为什么我们需要关注它？
+- 隔离性（`isolation`）
+- 隔离性的重要性
 
 > **为什么需要隔离性**
 

@@ -17,12 +17,12 @@
 brew -v
 
 # 安装基本依赖环境
-brew install python3 gawk gnu-sed gmp mpfr libmpc isl zlib expat gsed
-brew tap discoteq/discoteq
-brew install flock
+arch -arm64 brew install python3 gawk gnu-sed gmp mpfr libmpc isl zlib expat gsed
+arch -arm64 brew tap discoteq/discoteq
+arch -arm64 brew install flock
 
 # Qemu 需要依赖ninja
-brew install ninja
+arch -arm64 brew install ninja
 ```
 
 - Error
@@ -277,7 +277,7 @@ make qemu
 #### 2.6.1 窗口1
 
 ```bash
-cd xv6-riscvbash
+cd xv6-riscv
 make CPUS=1 qemu-gdb
 ```
 
