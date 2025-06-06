@@ -329,4 +329,184 @@ int piperead(struct pipe *pi, uint64 addr, int n)
   release(&pi->lock);  // 释放锁
   return i; // 返回实际读取的字节数
 }
+
+```
+
+## primes(moderate/hard)
+
+使用多进程和管道，每个进程作为一个筛子，输出当前最小的素数，并筛掉该素数的所有倍数，然后将剩下的数集传递给下一个进程。最后形成一个子进程链，由于每个进程都调用了`wait(0)`，等待其子进程，所以会在最后一个进程完成后，依次向上退出各个进程。
+
+```text
+主进程：生成 n ∈ [2,35] -> 子进程1：筛掉所有 2 的倍数 -> 子进程2：筛掉所有 3 的倍数 -> 子进程3：筛掉所有 5 的倍数 -> .....
+```
+
+```c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+
+#define RD 0  // pipe read end (for reading)
+#define WR 1  // pipe write end (for writing)
+
+/**
+ * 筛子实现
+ * 
+ * 一次 sieve 调用实现一个筛选子进程，从left pipe 获取并输出一个素数 p，筛除 p 的所有倍数，
+ * 然后创建 一个筛选子进程 和 相应的输入输出管道，将剩下的数传递至下一个筛选子进程
+ * 
+ * @param left_pipe:来自该进程左端进程的输入管道
+ */
+void sieve(int left_pipe[2]){
+    int p;
+    read(left_pipe[RD], &p, sizeof(p));
+    // 如果是结束哨兵 -1，则代表所有数字处理完毕，退出程序
+    if(p == -1){
+        exit(0);
+    }
+
+    printf("prime %d\n", p);
+
+    int right_pipe[2];
+    pipe(right_pipe);
+    // 创建下一个筛选子进程
+    int pid = fork();
+    if(pid == 0){
+        close(right_pipe[WR]);  // 子进程只需要对输入管道 right_pipe 进行读，而不需要写，所以关掉子进程的输入管道写文件描述符，降低进程打开的文件描述符数量
+        close(left_pipe[RD]);   // 这里的 left_pipe 是 *父进程* 的输入管道，子进程用不到，关掉
+        sieve(right_pipe);
+    } else {
+        close(right_pipe[RD]); // 父进程只需要对子进程的输入管道进行写，不需要读，关闭
+        // close(left_pipe[WR]);  父进程只需要对其输入管道进行读，不需要写，关掉,但在创建子进程时已经关掉，所以不用重复关闭
+
+        int buf;
+        while (read(left_pipe[RD], &buf, sizeof(buf)) && buf != -1)
+        {
+            if(buf % p != 0) { // 筛掉能被该进程筛选掉的数字，传递到下一进程
+                write(right_pipe[WR], &buf,sizeof(buf));   // 将剩余的数字写到右端进程
+            }    
+        }
+        // 补写最后的结束标志位
+        buf = -1;
+        write(right_pipe[WR], &buf, sizeof(buf));
+        wait(0);
+        exit(0);
+    }
+}
+
+int main(int argc, char **argv){
+    int input_pipe[2];
+    pipe(input_pipe);
+
+    if (fork() == 0){
+        close(input_pipe[WR]);
+        sieve(input_pipe);
+        exit(0);
+    } else {
+        close(input_pipe[RD]);
+        int i;
+        for(i = 2;i <= 35; i++){
+            write(input_pipe[WR], &i, sizeof(i));
+        }
+        i = -1;
+        write(input_pipe[WR], &i, sizeof(i));
+    }
+    wait(0);
+    exit(0);
+}
+
+```
+
+```c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+
+#define RD 0  // 管道读端
+#define WR 1  // 管道写端
+#define END -1 // 结束标志
+
+// 声明函数不会返回
+void sieve_process(int read_fd) __attribute__((noreturn));
+
+/**
+ * 素数筛子进程 - 此函数不会返回，总是通过exit()终止
+ * 
+ * @param read_fd: 输入管道的读端文件描述符
+ */
+void sieve_process(int read_fd) {
+    int p;
+    while (1) {
+        // 读取当前素数
+        if (read(read_fd, &p, sizeof(p)) <= 0 || p == END) {
+            exit(0);
+        }
+        printf("prime %d\n", p);
+
+        int next_pipe[2];
+        if (pipe(next_pipe) < 0) {
+            fprintf(2, "pipe error\n");
+            exit(1);
+        }
+        
+        int pid = fork();
+        if (pid < 0) {
+            fprintf(2, "fork error\n");
+            exit(1);
+        }
+
+        if (pid == 0) {  // 子进程：处理下一级筛选
+            close(read_fd);         // 关闭父级输入
+            close(next_pipe[WR]);   // 关闭未使用的写端
+            sieve_process(next_pipe[RD]); // 递归处理
+        } else {         // 父进程：筛选并传递数字
+            close(next_pipe[RD]);  // 关闭未使用的读端
+            
+            int num;
+            while (read(read_fd, &num, sizeof(num)) > 0 && num != END) {
+                if (num % p != 0) {  // 筛选非倍数
+                    write(next_pipe[WR], &num, sizeof(num));
+                }
+            }
+            // 传递结束标志
+            int end_flag = END;
+            write(next_pipe[WR], &end_flag, sizeof(end_flag));
+            close(next_pipe[WR]);  // 关闭写端
+            wait(0);              // 等待子进程
+            exit(0);
+        }
+    }
+}
+
+int main(int argc, char **argv) {
+    int init_pipe[2];
+    if (pipe(init_pipe) < 0) {
+        fprintf(2, "pipe error\n");
+        exit(1);
+    }
+
+    int pid = fork();
+    if (pid < 0) {
+        fprintf(2, "fork error\n");
+        exit(1);
+    }
+
+    if (pid == 0) {  // 筛分子进程
+        close(init_pipe[WR]);  // 关闭未使用的写端
+        sieve_process(init_pipe[RD]); // 开始筛选过程
+    } else {            // 主进程：提供初始数据
+        close(init_pipe[RD]);  // 关闭未使用的读端
+        
+        // 生成2-35的数字序列
+        for (int i = 2; i <= 280; i++) {
+            write(init_pipe[WR], &i, sizeof(i));
+        }
+        // 写入结束标志
+        int end_flag = END;
+        write(init_pipe[WR], &end_flag, sizeof(end_flag));
+        close(init_pipe[WR]);
+        
+        wait(0); // 等待筛分子进程结束
+    }
+    exit(0);
+}
 ```
