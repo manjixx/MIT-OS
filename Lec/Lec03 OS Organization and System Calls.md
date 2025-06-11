@@ -39,8 +39,31 @@
     - [3.7.2 内核编译](#372-内核编译)
       - [编译过程](#编译过程)
       - [查看 `kernel.asm`文件](#查看-kernelasm文件)
+      - [运行 XV6（不使用 gdb）](#运行-xv6不使用-gdb)
   - [3.8 QEMU底层原理](#38-qemu底层原理)
-  - [3.9 XV6 启动过程](#39-xv6-启动过程)
+    - [3.8.1 QEMU的本质：硬件级仿真](#381-qemu的本质硬件级仿真)
+    - [3.8.2 RISC-V的结构图(硬件架构)](#382-risc-v的结构图硬件架构)
+    - [3.8.3 QEMU工作原理：指令级仿真](#383-qemu工作原理指令级仿真)
+    - [3.8.4 学生问答](#384-学生问答)
+  - [3.9 XV6 启动过程详解](#39-xv6-启动过程详解)
+    - [3.9.1 概述](#391-概述)
+    - [3.9.2 调试环境搭建](#392-调试环境搭建)
+      - [3.9.2.1 QEMU启动（GDB服务端）](#3921-qemu启动gdb服务端)
+      - [3.9.2.2 GDB客户端连接](#3922-gdb客户端连接)
+    - [3.9.3 内核入口分析](#393-内核入口分析)
+      - [3.9.3.1 初始指令分析](#3931-初始指令分析)
+      - [3.9.2 执行环境特征](#392-执行环境特征)
+    - [3.9.3 内核初始化流程](#393-内核初始化流程)
+      - [3.9.3.1 进入main函数](#3931-进入main函数)
+      - [3.9.3.2 consoleinit 验证](#3932-consoleinit-验证)
+      - [3.9.3.3 初始化序列（main 函数）](#3933-初始化序列main-函数)
+    - [3.9.4 用户空间启动](#394-用户空间启动)
+      - [3.9.4.1 首个用户进程创建（`userinit`）](#3941-首个用户进程创建userinit)
+      - [3.9.4.2 initcode 执行流程](#3942-initcode-执行流程)
+      - [3.9.4.3 首个系统调用捕获（syscall）](#3943-首个系统调用捕获syscall)
+      - [3.9.4.3 init 程序详解](#3943-init-程序详解)
+      - [3.9.4.5 shell 启动验证](#3945-shell-启动验证)
+    - [3.9.5 启动时序总结](#395-启动时序总结)
 
 ## 3.1 课程回顾
 
@@ -494,34 +517,58 @@ Unix接口通过抽象硬件资源，从而提供了强隔离性。接口经过�
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MJdmgC_aByY8_wjKNKA%2F-MJgYi8MwG-QEqdvZ63Q%2Fimage.png?alt=media&token=d82387cf-bc09-47a2-a9d0-7ff0eb0cd2b2)
 
+- 内核的入口指令通常位于地址 `0x80000000`（这是 RISC-V 上许多内核约定的起始地址）。
+
+- 第一条指令是 `auipc（Add Upper Immediate to PC）`，这是一条常见的用于构建地址的 RISC-V 指令。
+
+- 第二列（例如 `0x0000a117, 0x83010113, 0x6505`）代表什么？
+  - “这是汇编指令的16进制表现形式对吗？”
+  - 解答： 完全正确！这些数值就是 `auipc` 等指令的机器码二进制编码（以十六进制形式显示）。每条汇编指令在 CPU 层面都对应一个特定的二进制数值。`kernel.asm` 显示这些编码对于深入理解程序在硬件层面的执行非常有帮助，尤其是在使用 gdb 进行底层调试时，查看这些机器码有助于精确追踪执行流。
+
 这里你们可能已经注意到了，第一个指令位于地址0x80000000，对应的是一个RISC-V指令：auipc指令。
 
-有人知道第二列，例如0x0000a117、0x83010113、0x6505，是什么意思吗？有人想来回答这个问题吗？
-学生回答：这是汇编指令的16进制表现形式对吗？
-是的，完全正确。所以这里0x0000a117就是auipc，这里是**二进制编码后的指令**。因为每个指令都有一个二进制编码，kernel的asm文件会显示这些二进制编码。当你在运行gdb时，如果你想知道具体在运行什么，你可以看具体的二进制编码是什么，有的时候这还挺方便的。
+#### 运行 XV6（不使用 gdb）
 
-接下来，让我们**不带gdb运行XV6**（make会读取Makefile文件中的指令）。这里会编译文件，然后调用QEMU（qemu-system-riscv64指令）。这里本质上是通过C语言来模拟仿真RISC-V处理器。
+当在命令行执行 `make`（或 `make qemu`）时：
+
+- `make` 程序读取 `Makefile` 中的指令。
+- 按照上述流程编译所有内核源文件。
+- 最终调用 QEMU 模拟器来启动编译好的 XV6 内核（这里本质上是通过C语言来模拟仿真RISC-V处理器）。命令类似于：
+
+```bash
+qemu-system-riscv64 -kernel kernel/kernel -m 128M -smp 3 -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+```
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MJgYxe3Ki7wfpMQgXe-%2F-MJgd7lBxdCSukMsxDGi%2Fimage.png?alt=media&token=bfcf8e8d-34d8-44a6-b84b-e378bde5bc09)
 
-我们来看传给QEMU的几个参数：这样，XV6系统就在QEMU中启动了。
+关键启动参数解析：
 
-- `kernel`：这里传递的是内核文件（kernel目录下的kernel文件），这是将在QEMU中运行的程序文件。
-- `m`：这里传递的是RISC-V虚拟机将会使用的内存数量
-- `smp`：这里传递的是虚拟机可以使用的CPU核数
-- `drive`：传递的是虚拟机使用的磁盘驱动，这里传入的是fs.img文件
+- `kernel kernel/kernel`: 指定要运行的内核可执行文件路径。
+
+- `m`: ISC-V虚拟机将会使用的内存数量。
+
+- `smp`: 虚拟机可以使用的CPU核数。
+
+- `drive`: 虚拟机使用的磁盘驱动
 
 ## 3.8 QEMU底层原理
 
-QEMU表现的就像一个真正的计算机一样。当使用**QEMU时，你不应该认为它是一个C程序，你应该把它想成是下图，一个真正的主板**。
+### 3.8.1 QEMU的本质：硬件级仿真
+
+`QEMU` 不是简单的应用程序，而是一个完整的硬件仿真平台。当使用 `QEMU` 运行内核时，应将其视为真实的物理主板系统,该仿真主板包含：
+
+- `RISC-V`处理器芯片
+- 物理内存模块
+- 外设接口（网络/USB/PCI-E等）
+- 电源开关与时钟电路
+
+XV6操作系统正是在这个虚拟硬件平台上运行，管理与真实硬件完全一致的资源。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MJgYxe3Ki7wfpMQgXe-%2F-MJghmTlvFOKAnfGeveB%2Fimage.png?alt=media&token=2e8f081f-1f48-43e8-8486-0352732fd28e)
 
-当我们通过QEMU来运行你的内核时，你应该认为你的内核是运行在这样一个主板之上。主板有一个开关，一个RISC-V处理器，有支持外设的空间，比如说一个接口是连接网线的，一个是PCI-E插槽，主板上还有一些内存芯片，这是一个你可以在上面编程的物理硬件，而XV6操作系统管理这样一块主板，你在你的脑海中应该有这么一张图。
+### 3.8.2 RISC-V的结构图(硬件架构)
 
-> **RISC-V的结构图**
-
-对于RISC-V，有完整的文档介绍，比如说下图是一个RISC-V的结构图，图中包括:
+RISC-V硬件架构结构图如下，包含以下核心组件，QEMU精确模拟了这些元素：
 
 - 4个核：U54 Core 1-4
 - L2 cache：Banked L2
@@ -533,41 +580,73 @@ QEMU表现的就像一个真正的计算机一样。当使用**QEMU时，你不�
 
 我们后面会讨论更多的细节，但是这里**基本上就是RISC-V处理器的所有组件**，你通过它与实际的硬件交互。
 
-实际上抛开一些细节，通过QEMU模拟的计算机系统或者说计算机主板，与这里由SiFive生产的计算机主板非常相似。本来想给你们展示一下这块主板的。当你们在运行QEMU时，你们需要知道，你们基本上跟在运行硬件是一样的，只是说同样的东西，QEMU在软件中实现了而已。
+注：QEMU的仿真实现与真实硬件（如SiFive开发板）非常相似，是硬件功能在软件层面的重建。
 
-> **当我们说QEMU仿真了RISC-V处理器时，背后的含义是什么？**
+### 3.8.3 QEMU工作原理：指令级仿真
 
-直观来看，QEMU是一个大型的开源C程序，你可以下载或者git clone它。
-
-但是在**内部，在QEMU的主循环中，只在做一件事情**：
+直观来看`QEMU`本质是开源C程序，其核心为通过动态二进制翻译实现处理器仿真。主循环流程如下：
 
 - 读取4字节或者8字节的RISC-V指令。
-- 解析RISC-V指令，并找出对应的操作码（op code）。
+- 解析RISC-V指令，并找出对应的操作码（op code）。之前阅读`kernel.asm`的时候，看过一些操作码的二进制版本。通过解析，或许可以知道这是一个`ADD`指令，或者是一个`SUB`指令。
 - 之后，在软件中执行相应的指令。
 
-我们之前在看kernel.asm的时候，看过一些操作码的二进制版本。通过解析，或许可以知道这是一个ADD指令，或者是一个SUB指令。
+```c
+while (simulation_running) {
+    // 1. 取指令
+    instruction = fetch_4bytes(PC); 
+    
+    // 2. 解码指令
+    opcode = decode(instruction);
+    
+    // 3. 执行语义
+    execute_opcode(opcode);
+    
+    // 4. 更新PC
+    PC += 4; 
+}
+```
 
-这基本上就是QEMU的全部工作了，对于每个CPU核，QEMU都会运行这么一个循环。
+**关键实现细节：**
 
-为了完成这里的工作，**QEMU的主循环需要维护寄存器的状态**。所以QEMU会有以C语言声明的类似于X0，X1寄存器等等。当QEMU在执行一条指令，比如(ADD a0, 7, 1)，这里会将常量7和1相加，并将结果存储在a0寄存器中，所以在这个例子中，寄存器X0会是7。
+- 寄存器状态维护:`QEMU`在内存中维护完整的`RISC-V`寄存器文件
+
+-当`QEMU`在执行一条指令，比如`(ADD a0, 7, 1)`，这里会将常量`7`和`1`相加，并将结果存储在`a0`寄存器中，所以在这个例子中，寄存器`X0`会是`7`。
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MJliet0hZBL75tlaCZM%2F-MJljj-HF66Hcx_5N-6M%2Fimage.png?alt=media&token=cb09f40c-ed00-494f-a5ce-1d503f48eb80)
 
-之后QEMU会执行下一条指令，并持续不断的执行指令。
-
 **除了仿真所有的普通权限指令之外，QEMU还会仿真所有的特殊权限指令，这就是QEMU的工作原理。**
 
-> **学生提问：** 我想知道，QEMU有没有什么欺骗硬件的实现，比如说overlapping instruction？
+### 3.8.4 学生问答
+
+> **学生提问：** 我想知道，QEMU 有没有什么欺骗硬件的实现，比如说overlapping instruction？（QEMU是否使用硬件加速技巧（如指令重叠执行）？）
 >**Frans教授：** 并没有，真正的CPU运行在QEMU的下层。当你运行QEMU时，很有可能你是运行在一个x86处理器上，这个x86处理器本身会做各种处理，比如顺序解析指令。所以QEMU对你来说就是个C语言程序。
 
 > **学生提问：** 那多线程呢？程序能真正跑在4个核上吗？还是只能跑在一个核上？如果能跑在多个核上，那么QEMU是不是有多线程？
-> **Frans教授：** 我们在Athena上使用的QEMU还有你们下载的QEMU，它们会使用多线程。QEMU在内部通过多线程实现并行处理。所以，当QEMU在仿真4个CPU核的时候，它是并行的模拟这4个核。我们在后面有个实验会演示这里是如何工作的。所以，（当QEMU仿真多个CPU核时）这里真的是在不同的CPU核上并行运算。
+> **Frans教授：** 我们在Athena上使用的QEMU还有你们下载的QEMU，它们会使用多线程。**QEMU在内部通过多线程实现并行处理**。所以，当QEMU在仿真4个CPU核的时候，它是并行的模拟这4个核。我们在后面有个实验会演示这里是如何工作的。所以，（当QEMU仿真多个CPU核时）这里真的是在不同的CPU核上并行运算。
 
-## 3.9 XV6 启动过程
+**总结：QEMU的定位-QEMU是硬件行为的重建者而非简单模拟器**：
 
-接下来，我会系统的介绍XV6，让你们对XV6的结构有个大概的了解。
+- 指令集层：精确还原RISC-V指令语义
+- 硬件层：完整仿真内存/中断/外设
+- 系统层：提供与真实主板一致的运行环境
 
-- 首先，我会启动QEMU，并打开gdb。本质上来说QEMU内部有一个gdb server，当我们启动之后，QEMU会等待gdb客户端连接。
+## 3.9 XV6 启动过程详解
+
+这里简单的介绍了一下XV6是如何从0开始直到第一个Shell程序运行起来。并且我们也看了一下第一个系统调用是在什么时候发生的。本节并不会涉及系统调用背后的具体机制，这个在后面会介绍。
+
+### 3.9.1 概述
+
+XV6启动过程是从硬件初始化到用户空间的全流程，主要分为三个阶段：
+
+- **硬件初始化**：从`_entry`入口到`main`函数执行前
+- **内核初始化**：`main`函数中的系统组件初始化
+- **用户空间启动**：从`initcode`到`Shell`启动
+
+### 3.9.2 调试环境搭建
+
+#### 3.9.2.1 QEMU启动（GDB服务端）
+
+启动`QEMU`，本质上来说`QEMU`内部有一个`gdb server`，启动之后，`QEMU`会等待`gdb`客户端连接。
 
 ```bash
 make CPUS=1 qemu-gdb
@@ -575,7 +654,9 @@ make CPUS=1 qemu-gdb
 qemu-system-riscv64 -machine virt -bios none -kernel kernel/kernel -m 128M -smp 1 -nographic -drive file=fs.img,if=none,format=raw,id=x0 -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 -S -gdb tcp::25501
 ```
 
-- 在另一个终端**启动一个gdb客户端**,注意当xv6-riscv 目录下有 `.gdbinit` 配置 有的情况下 `riscv64-unknown-elf-gdb` 会自动加载，如果没有`.gdbinit`则需要你手动 `source .gdbinit` 当打印 `0x0000000000001000 in ?? ()` 代表可以调试。
+#### 3.9.2.2 GDB客户端连接
+
+在另一个终端**启动一个gdb客户端**,注意当xv6-riscv 目录下有 `.gdbinit` 配置 有的情况下 `riscv64-unknown-elf-gdb` 会自动加载，如果没有`.gdbinit`则需要你手动 `source .gdbinit` 当打印 `0x0000000000001000 in ?? ()` 代表可以调试。
 
 ```bash
 riscv64-unknown-elf-gdb
@@ -613,20 +694,27 @@ determining executable automatically.  Try using the "file" command.
 
 ```
 
-- 在连接上之后，在**程序的入口处设置一个端点**，因为我们知道这是QEMU会跳转到的第一个指令。设置完断点之后，我运行程序，可以发现代码并没有停在0x8000000（见3.7 kernel.asm中，0x80000000是程序的起始位置），而是停在了0x8000000a。
+### 3.9.3 内核入口分析
+
+#### 3.9.3.1 初始指令分析
+
+在连接上之后，在**程序的入口处设置一个端点**，这是`QEMU`会跳转到的第一个指令。
+
+设置完断点之后，运行程序，可以发现代码并没有停在`0x8000000`（见3.7 `kernel.asm`中，`0x80000000`是程序的起始位置），而是停在了`0x8000000a`。
 
 ```bash
 (gdb) b _entry
 Breakpoint 1 at 0x8000000a
 ```
 
-- **如果我们查看kernel的汇编文件**,我们可以看到，在地址0x8000000a读取了控制系统寄存器（Control System Register）mhartid，并将结果加载到了a1寄存器。所以QEMU会模拟执行这条指令，之后执行下一条指令。地址0x80000000是一个被QEMU认可的地址。也就是说如果你想使用QEMU，那么第一个指令地址必须是它。所以，我们会让内核加载器从那个位置开始加载内核。
+第一条指令： **如果查看`kernel`的汇编文件**，可以看到，在地址`0x8000000a`读取了控制系统寄存器`（Control System Register）mhartid`，并将结果加载到了`a1`寄存器。所以`QEMU`会模拟执行这条指令，之后执行下一条指令。地址`0x80000000`是一个被QEMU认可的地址。也就是说如果你想使用QEMU，那么第一个指令地址必须是它。所以，我们会让内核加载器从那个位置开始加载内核。
 
 ```bash
+// csrr：特权指令（Control Status Register Read）
 8000000a: f14025f3           csrr a1,mhartid
 ```
 
-- **如果我们查看`kernel.ld`**，这个文件定义了**内核是如何被加载的**，从这里也可以看到，内核使用的起始地址就是QEMU指定的`0x80000000`这个地址。这就是我们操作系统最初运行的步骤。
+- **如果查看`kernel.ld`**，该文件定义了**内核是如何被加载的**，从这里也可以看到，内核使用的起始地址就是`QEMU`指定的`0x80000000`这个地址。这就是我们操作系统最初运行的步骤。
 
 ```ld
 OUTPUT_ARCH( "riscv" )
@@ -676,7 +764,7 @@ SECTIONS
 
 ```
 
-- 回到gdb，我们可以看到gdb也显示了指令的二进制编码`f3 25 40 f1`,可以看出`csrr`是一个4字节的指令，而`addi`是一个2字节的指令。
+- 回到`gdb`， 继续执行。可以看到`gdb`显示了指令`csrr`（特权指令，`Control Status Register Read`）的二进制编码`f3 25 40 f1`，即`csrr`是一个4字节的指令。而`addi`是一个2字节的指令。
 
 ```bash
 (gdb) b _entry
@@ -691,9 +779,21 @@ Breakpoint 1, 0x000000008000000a in _entry ()
 => 0x000000008000000e <_entry+14>: 85 05 addi a1,a1,1
 ```
 
-我们这里可以看到，XV6从entry.s开始启动，这个时候没有内存分页，没有隔离性，并且运行在M-mode（machine mode）。XV6会尽可能快的跳转到kernel mode或者说是supervisor mode。
+#### 3.9.2 执行环境特征
 
-- 我们在main函数设置一个断点，main函数已经运行在`supervisor mode`了。接下来我运行程序，代码会在断点，也就是main函数的第一条指令停住。
+继续运行`si`,可以看出，`XV6`从`entry.s`开始启动，执行环境特征如下：
+
+- **此时没有内存分页，没有隔离性**
+- 运行在`M-mode（machine mode）`
+- `XV6`会尽可能快的跳转到`kernel mode`或者说是`supervisor mode`。
+
+### 3.9.3 内核初始化流程
+
+#### 3.9.3.1 进入main函数
+
+在`main`函数设置一个断点，注意：`main`函数已经运行在`supervisor mode`了。
+
+继续运行程序，代码会在断点，也就是`main`函数的第一条指令停住。
 
 ```bash
 # gdb断点显示
@@ -707,7 +807,9 @@ Breakpoint 2, main () at kernel/main.c:13
 ```
 
 ```c
-/**main函数源码 */
+/** 
+  main函数源码 
+*/
 #include "types.h"
 #include "param.h"
 #include "memlayout.h"
@@ -720,7 +822,7 @@ volatile static int started = 0;
 void
 main()
 {
-  if(cpuid() == 0){
+  if(cpuid() == 0){ 
     consoleinit();
     printfinit();
     printf("\n");
@@ -755,7 +857,7 @@ main()
 }
 ```
 
-- 运行在`gdb`的`layout split`模式,从这个视图可以看出gdb要执行的下一条指令是什么，断点具体在什么位置。这里只在一个CPU上运行QEMU（`make CPUS=1 qemu-gdb`），这样会使得gdb调试更加简单。因为现在只指定了一个CPU核，QEMU只会仿真一个核，我可以单步执行程序（因为在单核或者单线程场景下，单个断点就可以停止整个程序的运行）。
+注1: 运行在`gdb`的`layout split`模式，该模式下可以看出`gdb`要执行的下一条指令，断点的具体位置。
 
 ```bash
 (gdb) layout split
@@ -763,7 +865,11 @@ main()
 
 ![](https://906337931-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-MHZoT2b_bcLghjAOPsJ%2F-MJlxDELJZKUZ7wmW49T%2F-MJoCnirrECVo-lvg7dS%2Fimage.png?alt=media&token=a20802f5-715b-41b5-a942-2d571ea78584)
 
-- 通过**在gdb中输入`n`**，可以跳到下一条指令。这里调用了一个名为`consoleinit`的函数，它的工作与你想象的完全一样，也就是设置好`console`。一旦`console`设置好了，接下来可以向`console`打印输出（代码16、17行）。
+注2：目前只在一个`CPU`上运行`QEMU`（`make CPUS=1 qemu-gdb`），这使得gdb调试更加简单。同时，因为现在只指定了一个`CPU`核，`QEMU`只会仿真一个核，我们可以单步执行程序（因为在单核或者单线程场景下，单个断点就可以停止整个程序的运行）。
+
+#### 3.9.3.2 consoleinit 验证
+
+**在gdb中输入`n`**，可以跳到下一条指令。这里调用了一个名为`consoleinit`的函数，其功能为设置好`console`。`console`设置好后，便可以向`console`打印输出（代码16、17行）。
 
 ```bash
 
@@ -808,7 +914,14 @@ xv6 kernel is booting
 
 ```
 
-除了`console`之外，还有许多代码来做初始化。
+#### 3.9.3.3 初始化序列（main 函数）
+
+- 除了`console`之外，还有许多代码来做初始化。关键初始化顺序：
+  - 内存管理（kinit/kvminit）
+  - 异常处理（trapinit）
+  - 中断系统（plicinit）
+  - 文件系统（binit/iinit）
+  - 用户进程（userinit）
 
 ```c
     kinit();         // physical page allocator 设置好页表分配器（page allocator）
@@ -831,7 +944,12 @@ xv6 kernel is booting
 > **学生提问**：这里的初始化函数的调用顺序重要吗？
 > **Frans教授**：重要，哈哈。一些函数必须在另一些函数之后运行，某几个函数的顺序可能不重要，但是对它们又需要在其他的一些函数之后运行。
 
-- 可以通过`gdb`的`s`指令，跳到`userinit`内部。
+### 3.9.4 用户空间启动
+
+#### 3.9.4.1 首个用户进程创建（`userinit`）
+
+持续进行下一步`n`，通过`gdb`的`s`指令，跳到`userinit`内部。
+如果不小心进错函数，则通过`finish`退出当前函数。
 
 ```bash
 # gdb视图
@@ -867,7 +985,19 @@ userinit () at kernel/proc.c:230
 
 上图是`userinit`函数，右边是源码，左边是gdb视图。
 
-- `userinit`有点像是胶水代码`Glue code`（胶水代码不实现具体的功能，只是为了适配不同的部分而存在），它利用了XV6的特性，并启动了第一个进程。我们总是需要有一个用户进程在运行，这样才能实现与操作系统的交互，所以这里需要**一个小程序来初始化第一个用户进程**。这个小程序定义在`initcode`中。
+`userinit`有点像是胶水代码`Glue code`（胶水代码不实现具体的功能，只是为了适配不同的部分而存在），它利用了XV6的特性，并启动了第一个进程。总是需要有一个用户进程在运行，这样才能实现与操作系统的交互，所以这里需要**一个小程序来初始化第一个用户进程**，这个小程序定义在`initcode`中。
+
+#### 3.9.4.2 initcode 执行流程
+
+**综合来看，`initcode`完成了通过`exec`调用`init`程序的工作。**
+
+**`initcode` 功能**：是二进制形式的程序，它会链接或者在内核中直接静态定义。这段代码对应了下面的汇编程序 `user/initCode.s`：
+
+- 首先将`init`中的地址加载到`a0（la a0, init）`，
+- `argv`中的地址加载到`a1（la a1, argv）`
+- `exec`系统调用对应的数字加载到`a7（li a7, SYS_exec）`
+- 最后调用`ECALL`。
+- 即该段汇编程序执行了3条指令，之后在第4条指令将控制权交给了操作系统。
 
 ```c
 // a user program that calls exec("/init")
@@ -883,12 +1013,6 @@ uchar initcode[] = {
 };
 ```
 
-这里直接是程序的二进制形式，它会链接或者在内核中直接静态定义。实际上，这段代码对应了下面的汇编程序 `user/initCode.s`。这个汇编程序中，
-
-- 首先将init中的地址加载到`a0（la a0, init）`，`argv`中的地址加载到`a1（la a1, argv）`，exec系统调用对应的数字加载到`a7（li a7, SYS_exec）`
-- 最后调用`ECALL`。
-- 所以这里执行了3条指令，之后在第4条指令将控制权交给了操作系统。
-
 ```s
 # Initial process that execs /init.
 # This code runs in user space.
@@ -898,10 +1022,10 @@ uchar initcode[] = {
 # exec(init, argv)
 .globl start
 start:
-        la a0, init
-        la a1, argv
+        la a0, init  # 加载init路径地址
+        la a1, argv  # 加载参数地址
         li a7, SYS_exec
-        ecall
+        ecall          # 触发系统调用
 
 # for(;;) exit();
 exit:
@@ -921,18 +1045,18 @@ argv:
 
 ```
 
-如果我在syscall中设置一个断点，并让程序运行起来。
+#### 3.9.4.3 首个系统调用捕获（syscall）
+
+在`syscall`中设置一个断点，并让程序运行起来。
 
 ```bash
 (gdb) b syscall
 Breakpoint 3 at 0x80002abc: file kernel/syscall.c, line 134.
 ```
 
-- `userinit`会创建初始进程，返回到用户空间，执行刚刚介绍的3条指令，再回到内核空间。
+`userinit`会创建初始进程，返回到用户空间，执行刚刚介绍的3条指令，再回到内核空间。
 
-这里是任何XV6用户会使用到的第一个系统调用。让我们来看一下会发生什么。
-
-- 通过在`gdb`中执行`c`，让程序运行起来，我们现在进入到了`syscall`函数。
+通过在`gdb`中执行`c`，让程序运行起来，现在进入到了`syscall`函数。
 
 ```bash
 ┌─kernel/syscall.c─────────────────────────────────────────────────────────────┐
@@ -954,7 +1078,9 @@ Breakpoint 3 at 0x80002abc: file kernel/syscall.c, line 134.
 remote Thread 1.1 In: syscall                              L134  PC: 0x80002abc 
 ```
 
-- 我们可以查看syscall的代码，`kenel/syscall.c`
+**系统调用处理**
+
+- 查看`syscall`的代码，`kenel/syscall.c`
 
 ```c
 void
@@ -974,7 +1100,7 @@ syscall(void)
 }
 ```
 
-`num = p->trapframe->a7`当代码执行完这一行之后，我们可以在gdb中打印num，可以看到是7。
+- 执行完`num = p->trapframe->a7`后，在`gdb`中打印`num`，输出为7。
 
 ```bash
 ┌─kernel/syscall.c─────────────────────────────────────────────────────────────┐
@@ -1003,7 +1129,7 @@ $2 = 7
 
 ```
 
-如果我们查看`kenel/syscall.h`，可以看到`7`对应的是`exec`系统调用。所以，这里本质上是告诉内核，某个用户应用程序执行了`ECALL`指令，并且想要调用`exec`系统调用。
+- 查看`kenel/syscall.h`，可以看到`7`对应的是`exec`系统调用。所以，这里本质上是告诉内核，某个用户应用程序执行了`ECALL`指令，并且要调用`exec`系统调用。
 
 ```h
 // System call numbers
@@ -1030,7 +1156,9 @@ $2 = 7
 #define SYS_close  21
 ```
 
-`p->trapframe->a0 = syscall[num]()` 这一行是**实际执行系统调用**。这里可以看出，num用来索引一个数组，这个数组是一个**函数指针数组**，可以预期的是`syscall[7]`对应了`exec`的入口函数。我们跳到这个函数中去，可以看到，我们现在在`kernel/sysfile.c`的`sys_exec`函数中。
+- `p->trapframe->a0 = syscall[num]()` 表示**实际执行系统调用**。这里可以看出，`num`用来索引一个数组，这个数组是一个**函数指针数组**，可以预期的是`syscall[7]`对应了`exec`的入口函数。
+  
+- 进入`sys_exec()`函数中，位于`kernel/sysfile.c`。
 
 ```bash
 ┌─kernel/sysfile.c─────────────────────────────────────────────────────────────┐
@@ -1060,7 +1188,9 @@ $2 = 7
 sys_exec () at kernel/sysfile.c:422
 ```
 
-`sys_exec`中的第一件事情是从用户空间读取参数，它会读取`path`，也就是要执行程序的文件名。这里首先会为参数分配空间，然后从用户空间将参数拷贝到内核空间。之后我们打印`path`，可以看到传入的就是`init`程序。
+`sys_exec`中的第一件事情是从用户空间读取参数，它会读取`path`，也就是要执行程序的文件名。这里首先会为参数分配空间，然后从用户空间将参数拷贝到内核空间。
+
+之后我们打印`path`，可以看到传入的就是`init`程序。
 
 ```c
 /* sys_exec */
@@ -1108,7 +1238,11 @@ sys_exec(void)
 
 ```
 
-所以，综合来看，`initcode`完成了通过`exec`调用`init`程序。让我们来看看`user/init.c`程序，init会为用户空间设置好一些东西，比如配置好console，调用fork，并在fork出的子进程中执行shell。最终的效果就是Shell运行起来了。
+**所以，综合来看，`initcode`完成了通过`exec`调用`init`程序的工作。**
+
+#### 3.9.4.3 init 程序详解
+
+让我们来看看`user/init.c`程序，`init`会为用户空间设置好一些东西，比如配置好`console`，调用`fork`，并在`fork`出的子进程中执行`shell`。最终的效果就是`Shell`运行起来了。
 
 ```c
 // init: The initial user-level program
@@ -1168,7 +1302,9 @@ main(void)
 
 ```
 
-如果我再次运行代码，我还会陷入到syscall中的断点，并且同样也是调用exec系统调用，只是这次是通过exec运行Shell。当Shell运行起来之后，我们可以从QEMU看到Shell。
+#### 3.9.4.5 shell 启动验证
+
+如果我再次运行代码，我还会陷入到`syscall`中的断点，并且同样也是调用`exec`系统调用，只是这次是通过`exec`运行`Shell`。当`Shell`运行起来之后，我们可以从`QEMU`看到`Shell`。
 
 ```bash
 (base) iiixv@IIIXVdeAir xv6-riscv % make CPUS=1 qemu-gdb
@@ -1207,7 +1343,52 @@ Breakpoint 3, syscall () at kernel/syscall.c:134
 Continuing.
 ```
 
-这里简单的介绍了一下XV6是如何从0开始直到第一个Shell程序运行起来。并且我们也看了一下第一个系统调用是在什么时候发生的。我们并没有看系统调用背后的具体机制，这个在后面会介绍。
-
 > **学生提问**：我们会处理网络吗，比如说网络相关的实验？
 >**Frans教授**：是的，最后一个lab中你们会实现一个网络驱动。你们会写代码与硬件交互，操纵连接在RISC-V主板上网卡的驱动，以及寄存器，再向以太网发送一些网络报文。
+
+### 3.9.5 启动时序总结
+
+```mermaid
+sequenceDiagram
+    participant H as Hardware
+    participant K as Kernel
+    participant U as Userspace
+    
+    H->>K: 复位向量跳转 0x80000000
+    activate Kß
+    K->>K: _entry (M-mode)
+    K->>K: 设置栈指针
+    K->>K: 跳转至start()
+    K->>K: main()初始化 (S-mode)
+    deactivate K
+    
+    K->>U: userinit创建init进程
+    activate U
+    U->>U: initcode执行
+    U->>K: ecall触发SYS_exec
+    deactivate U
+    
+    activate K
+    K->>K: sys_exec()处理
+    K->>U: 加载/init程序
+    deactivate K
+    
+    activate U
+    U->>U: init初始化控制台
+    U->>U: fork()+exec("sh")
+    U->>U: Shell交互界面
+    deactivate U
+```
+
+**核心阶段特征**：
+| **阶段**         | **权限模式**   | **关键转折点**               |
+|------------------|----------------|------------------------------|
+| **硬件初始化**   | Machine Mode   | _entry入口指令执行           |
+| **内核初始化**   | Supervisor Mode| main函数组件初始化           |
+| **用户空间启动** | User Mode      | 首个ecall系统调用触发        |
+
+**设计本质**：
+1. **权限降级链条**：M-mode → S-mode → U-mode
+2. **空间转换**：裸机环境 → 内核空间 → 用户空间
+3. **控制权转移**：直接硬件控制 → 系统调用接口
+4. **进程零创建**：首个用户进程由内核直接构造（无fork）
