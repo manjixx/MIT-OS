@@ -242,7 +242,7 @@ loop:
 
 ### find（难度：Moderate）
 
-> [!TIP|label:YOUR JOB]
+> 💡 **YOUR JOB**
 > **写一个简化版本的UNIX的`find`程序：查找目录树中具有特定名称的所有文件，你的解决方案应该放在*user/find.c***
 
 提示：
@@ -255,10 +255,10 @@ loop:
 - 注意在C语言中不能像python一样使用“`==`”对字符串进行比较，而应当使用`strcmp()`
 - 将程序加入到Makefile的`UPROGS`
 
-如果你的程序输出下面的内容，那么它是正确的（当文件系统中包含文件***b***和***a/b***的时候）
+如果你的程序输出下面的内容，那么它是正确的（当文件系统中包含文件 ***b*** 和 ***a/b*** 的时候）
 
 ```bash
-$ make qemu
+$ make qemu 
 ...
 init: starting sh
 $ echo > b
@@ -272,8 +272,8 @@ $
 
 ### xargs（难度：Moderate）
 
-> [!TIP|label:YOUR JOB]
-> 编写一个简化版UNIX的`xargs`程序：它从标准输入中按行读取，并且为每一行执行一个命令，将行作为参数提供给命令。你的解决方案应该在***user/xargs.c***
+> 💡 **YOUR JOB**
+> 编写一个简化版UNIX的`xargs`程序：它从标准输入中按行读取，并且为每一行执行一个命令，将行作为参数提供给命令。你的解决方案应该在 ***user/xargs.c***
 
 下面的例子解释了`xargs`的行为
 
@@ -298,11 +298,9 @@ $
 
 - 使用`fork`和`exec`对每行输入调用命令，在父进程中使用`wait`等待子进程完成命令。
 - 要读取单个输入行，请一次读取一个字符，直到出现换行符（'\n'）。
-- ***kernel/param.h***声明`MAXARG`，如果需要声明`argv`数组，这可能很有用。
-- 将程序添加到***Makefile***中的`UPROGS`。
-- 对文件系统的更改会在qemu的运行过程中保持不变；要获得一个干净的文件系统，请运行`make clean`，然后`make qemu`
-
-
+- ***kernel/param.h*** 声明`MAXARG`，如果需要声明`argv`数组，这可能很有用。
+- 将程序添加到 ***Makefile*** 中的`UPROGS`。
+- 对文件系统的更改会在 qemu 的运行过程中保持不变；要获得一个干净的文件系统，请运行`make clean`，然后`make qemu`
 
 `xargs`、`find`和`grep`结合得很好
 
@@ -310,9 +308,9 @@ $
 $ find . b | xargs grep hello
 ```
 
-将对“`.`”下面的目录中名为***b***的每个文件运行`grep hello`。
+将对“`.`”下面的目录中名为 ***b*** 的每个文件运行`grep hello`。
 
-要测试您的`xargs`方案是否正确，请运行shell脚本***xargstest.sh***。如果您的解决方案产生以下输出，则是正确的：
+要测试您的`xargs`方案是否正确，请运行shell脚本 ***xargstest.sh*** 。如果您的解决方案产生以下输出，则是正确的：
 
 ```bash
 $ make qemu
@@ -325,7 +323,7 @@ hello
 $ $   
 ```
 
-你可能不得不回去修复你的`find`程序中的bug。输出有许多`$`，因为xv6 shell没有意识到它正在处理来自文件而不是控制台的命令，并为文件中的每个命令打印`$`。
+你可能不得不回去修复你的`find`程序中的bug。输出有许多`$`，因为 xv6 shell 没有意识到它正在处理来自文件而不是控制台的命令，并为文件中的每个命令打印`$`。
 
 ## 提交实验
 
@@ -356,7 +354,7 @@ Please enter your API key: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 $
 ```
 
-`make handin`将把你的API密钥存储在***myapi.key***中。如果需要更改API密钥，只需删除此文件并让`make handin`再次生成它(***myapi.key***不得包含换行符）。
+`make handin`将把你的API密钥存储在 ***myapi.key*** 中。如果需要更改API密钥，只需删除此文件并让`make handin`再次生成它(***myapi.key***不得包含换行符）。
 
 如果你运行了`make handin`，并且你有未提交的更改或未跟踪的文件，则会看到类似于以下内容的输出：
 
@@ -379,7 +377,7 @@ Untracked files will not be handed in.  Continue? [y/N]
 
 - 编写一个`uptime`程序，使用`uptime`系统调用以滴答为单位打印计算机正常运行时间。（easy）
 
-- 在`find`程序的名称匹配中支持正则表达式。***grep.c***对正则表达式有一些基本的支持。（easy）
+- 在`find`程序的名称匹配中支持正则表达式。***grep.c*** 对正则表达式有一些基本的支持。（easy）
 
 - xv6 shell（***user/sh.c***）只是另一个用户程序，您可以对其进行改进。它是一个最小的shell，缺少建立在真实shell中的许多特性。例如，
 
