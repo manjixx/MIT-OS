@@ -509,6 +509,86 @@ int main(int argc, char **argv){
 
 ## find (moderate)
 
+> **解题思路**
+
+- **递归深度优先搜索**：采用深度优先遍历文件系统树形结构。如果检测到当前的路径是一个文件夹，那儿就 DFS 这个文件夹下的每一个文件/文件夹。如果检测到为一个文件，则直接进行比较。
+- **双模式处理**：区分文件/目录两种类型进行不同处理
+- **路径动态构建**：使用缓冲区动态拼接子路径
+- **避免循环引用**：显式跳过`.`和`..`目录
+
+> **关键数据结构**
+
+- 使用`dirent`遍历目录
+- 通过`stat`获取文件类型
+
+```c
+struct dirent {  // 目录条目结构
+  ushort inum;   // inode编号
+  char name[DIRSIZ]; // 文件名(14字节)
+};
+
+struct stat {    // 文件元数据结构
+  int dev;       // 设备号
+  uint ino;      // inode号
+  short type;    // 文件类型(T_FILE/T_DIR)
+  short nlink; // Number of links to file
+  uint64 size; // Size of file in bytes
+};
+
+```
+
+```mermaid
+graph TD
+    A[main(argc, argv)] --> B{参数是否为3个}
+    B -- 否 --> C[输出 usage 并退出]
+    B -- 是 --> D[调用 find(argv[1], argv[2])]
+
+    D --> E[open(path)]
+    E --> F{open 失败？}
+    F -- 是 --> G[打印错误 return]
+    F -- 否 --> H[fstat(fd)]
+    H --> I{是文件 T_FILE？}
+
+    I -- 是 --> J{文件名是否匹配目标名？}
+    J -- 是 --> K[输出匹配路径]
+    J -- 否 --> L[返回]
+    I -- 否 --> M{是目录 T_DIR？}
+
+    M -- 否 --> L
+    M -- 是 --> N{路径是否过长？}
+    N -- 是 --> O[输出错误并返回]
+    N -- 否 --> P[构造 buf = path + / + de.name]
+
+    P --> Q[循环 read(fd, &de)]
+    Q --> R{de.inum 是否为 0？}
+    R -- 是 --> Q
+    R -- 否 --> S[stat(buf)]
+
+    S --> T{是否为 . 或 ..？}
+    T -- 是 --> Q
+    T -- 否 --> U[递归调用 find(buf, target)]
+    U --> Q
+```
+
+> **程序实现**
+
+程序结构分为两部分：
+
+- 主函数 `main()`
+  - 参数校验：检查参数个数是否为 3（程序名 + 路径 + 文件名）
+  - 调用 `find(argv[1], argv[2])` 递归查找
+
+- 递归函数 `find(char *path, const char *target)`此函数是核心，实现了目录递归遍历和文件匹配。具体步骤如下：
+  - A. 打开路径并判断类型
+    - 若打开失败或无法获取文件状态，打印错误并返回
+    - 获取类型后，进入下一步分类处理
+  - B. 处理文件（T_FILE）：利用字符串比较判断是否文件名尾部与目标文件名一致
+  - C. 处理目录（T_DIR）
+    - 遍历目录项
+    - 拼接完整子路径
+    - 排除`.`与`..`目录，避免递归死循环
+    - 对于每个子项递归调用 `find()` 实现深度优先搜索
+
 ```c
 #include "kernel/types.h"
 #include "kernel/stat.h"
@@ -576,6 +656,126 @@ int main(int argc, char *argv[]){
         exit(1);
     }
     find(argv[1], argv[2]);
+    exit(0);
+}
+```
+
+## xargs（难度：Moderate）
+
+> **题目解读**
+
+`xv6` 中的很多用户命令（如 `echo, grep, rm` 等）**不支持从标准输入中读取参数**。为了将标准输入中的内容作为参数传递给另一个命令，就需要引入一个“中转”机制，这就是 `xargs` 的作用。
+
+**`xargs` 的作用：**
+
+- 从标准输入中读取数据（通常是通过管道传入）；
+- 将这些数据当作参数，传给另一个命令；
+- 最终执行该命令，就像用户手动输入这些参数一样。
+
+> **功能示例**
+
+```bash
+echo hello too | xargs echo bye
+```
+
+**执行逻辑：**
+
+- `echo hello too` 输出字符串：`hello too`
+- 管道 `|` 把这两个单词作为标准输入传给 `xargs`
+- `xargs` 读取标准输入后，执行：`echo bye hello too`。即把 `bye` 和标准输入的内容拼接成完整命令参数。
+
+> **实现思路**
+
+- 读取标准输入
+  - 使用 `read()` 或 `fgets()` 从标准输入中获取内容；
+  - 按空格和换行符分隔单词；
+  - 存入一个字符指针数组，例如 `std_args[]`。
+
+- 构造命令参数数组
+
+  - 目标是构建一个 `char *argv[]` 传给 `exec()`；
+  - 内容应包括：
+
+    - 第一个元素：要执行的命令名（来自 `argv[1]`）；
+    - 后续元素：从命令行参数（argv\[2]...）中复制的已有参数；
+    - 最后追加：标准输入解析出的参数 `std_args[]`。
+
+  对于：`echo hello too | xargs echo bye`
+
+  应构造出如下 argv 数组：
+
+  ```c
+  argv[0] = "echo";
+  argv[1] = "bye";
+  argv[2] = "hello";
+  argv[3] = "too";
+  argv[4] = 0;  // NULL 结尾
+  ```
+
+- 调用 `exec()`
+
+  - 使用 `exec()` 或 `execvp()` 启动新的子进程执行目标命令；
+  - 参数数组必须以 `0` 结尾；
+  - 如果 `fork()` + `exec()`，还应注意回收子进程。
+
+> **具体实现**
+
+```c
+#include "kernel/types.h"
+#include "kernel/stat.h"
+#include "user/user.h"
+#include "kernel/fs.h"
+
+void run(char * program, char **args){
+    if(fork() == 0){
+        exec(program, args);
+        exit(0);
+    }
+    return;
+}
+
+int main(int argc, char *argv[]){
+    char buf[2048];                 // 读入时使用的内存池
+    char *p = buf, *last_p = buf;   // 当前参数的开始、结束指针
+    char *argsbuf[128];             // 命令参数数组，字符串指针数组，包含 argv 传进来的参数和 stdin 读入的参数
+    char **args = argsbuf;          // 指向 argsbuf 中第一个从 stdin 读入的参数
+
+    // 将 argv 的指针放入 *argbuf？
+    for(int i = 1; i < argc; i++){  // 第一个为指令，所以不读取？
+        *args = argv[i];            // 指针指向 
+        args++;
+    }
+
+    // 开始读入参数
+    char **pa = args;
+    while(read(0, p, 1) != 0){      // 从标准输入读取放入，读入时使用的内存池，每次仅读取一个字符串
+        // 读入一个参数完成（以空格分隔，如 `echo hello world`，则 hello 和 world 各为一个参数）
+        if(*p == ' ' || *p == '\n'){
+            *p = '\0'; // 将空格替换为 \0 分割开各个参数，这样可以直接使用内存池中的字符串作为参数字符串, 而不用额外开辟空间
+            *(pa++)=last_p;
+            last_p = p+1;
+            // 读入一行完成
+            if(*p == '\n') {
+                *pa = 0;    // 参数列表末尾用 null 标识列表结束
+                run(argv[1], argsbuf);
+                pa = args;  // 重置读入参数指针，准备读入下一行
+            }
+        }
+        p++;
+    }
+    
+    // 如果最后一行不是空行
+    if(pa != args){
+        // 收尾最后一个参数
+        *p = '\0';
+        *(pa++) = last_p;
+        // 收尾最后一行，参数列表末尾用 null 标识
+        *pa = 0;
+        run(argv[1], argsbuf);
+    }
+
+    // 循环等待所有子进程完成，每一次 wait(0) 等待一个
+    while(wait(0) != -1){};
     exit(0);
 }
 ```
