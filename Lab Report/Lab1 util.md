@@ -687,9 +687,9 @@ echo hello too | xargs echo bye
 > **实现思路**
 
 - 读取标准输入
-  - 使用 `read()` 或 `fgets()` 从标准输入中获取内容；
+  - 使用 `read()` 从标准输入中获取内容；
   - 按空格和换行符分隔单词；
-  - 存入一个字符指针数组，例如 `std_args[]`。
+  - 存入一个字符指针数组，例如 `argbuf`。
 
 - 构造命令参数数组
 
@@ -727,9 +727,12 @@ echo hello too | xargs echo bye
 #include "kernel/fs.h"
 
 void run(char * program, char **args){
-    if(fork() == 0){
+    int pid = fork();
+    if(pid == 0){
         exec(program, args);
         exit(0);
+    } else if(pid > 0) {
+        wait(0);
     }
     return;
 }
@@ -751,14 +754,15 @@ int main(int argc, char *argv[]){
     while(read(0, p, 1) != 0){      // 从标准输入读取放入，读入时使用的内存池，每次仅读取一个字符串
         // 读入一个参数完成（以空格分隔，如 `echo hello world`，则 hello 和 world 各为一个参数）
         if(*p == ' ' || *p == '\n'){
+            char c = *p;  // 关键修复：保存原始字符
             *p = '\0'; // 将空格替换为 \0 分割开各个参数，这样可以直接使用内存池中的字符串作为参数字符串, 而不用额外开辟空间
             *(pa++)=last_p;
             last_p = p+1;
             // 读入一行完成
-            if(*p == '\n') {
-                *pa = 0;    // 参数列表末尾用 null 标识列表结束
+            if(c == '\n') {  // 使用保存的字符检查换行
+                *pa = 0;
                 run(argv[1], argsbuf);
-                pa = args;  // 重置读入参数指针，准备读入下一行
+                pa = args;
             }
         }
         p++;
@@ -775,7 +779,123 @@ int main(int argc, char *argv[]){
     }
 
     // 循环等待所有子进程完成，每一次 wait(0) 等待一个
-    while(wait(0) != -1){};
+    // while(wait(0) != -1){};
     exit(0);
 }
 ```
+
+> **代码解读**
+
+**先理解例子 `echo hello too | xargs echo bye` 发生了什么**
+
+- `echo hello too` 输出字符串 `"hello too"`（注意结尾有换行符 `\n`）。
+
+- 管道 `|` 把 `"hello too\n"` 传给 `xargs` 的标准输入。
+
+- `xargs echo bye` 会：
+  - 读取输入 `"hello too\n"`
+  - 把输入拆分成参数 `"hello"` 和 `"too"`
+  - 拼接成新命令：`echo bye hello too`
+  - 执行它，最终输出 `bye hello too`
+
+**代码整体思路**
+
+- **准备阶段**：接收`xargs`后初始命令（如 `echo bye`）。
+- **读取输入**：从键盘或管道读取数据（如 `"hello too\n"`）。
+- **拆分参数**：遇到空格或换行符就切割成一个新参数。
+- **执行命令**：把新参数拼接到初始命令后，执行完整命令。
+
+**关键变量解释（想象成几个盒子）**
+
+- `char buf[2048]`：**大内存池**，存放从输入读取的原始数据（如 `"hello too\n"`）。
+- `char *p`：**扫描指针**，在 `buf` 中逐字符移动。
+- `char *last_p`：**参数起点指针**，标记当前参数的开始位置。
+- `char *argsbuf[128]`：**参数盒子数组**，存放所有参数（如 `{"echo", "bye", "hello", "too"}`）。
+- `char **args`：指向参数盒子的**第一个空位**，用于添加新参数。
+- `char **pa`：**当前操作指针**，在 `argsbuf` 中移动填充参数。
+
+**代码执行流程详解**
+
+- 准备初始命令 (`echo bye`)
+
+    ```c
+    // 命令行参数: argv = ["xargs", "echo", "bye"]
+    for(int i = 1; i < argc; i++){  // 跳过 "xargs"，从 "echo" 开始
+        *args = argv[i];  // 把 "echo" 和 "bye" 存入 argsbuf
+        args++;
+    }
+    ```
+
+  - 执行后 `argsbuf` 内容：
+    - `argsbuf[0] = "echo"` ← 来自 `argv[1]`
+    - `argsbuf[1] = "bye"`  ← 来自 `argv[2]`
+  - `args` 指针指向 `argsbuf[2]`（下一个空位，等待输入参数）。
+
+- 步骤 2: 读取输入 (`"hello too\n"`)
+
+    ```c
+    // 通过管道读入 "hello too\n" 到 buf
+    while(read(0, p, 1) != 0){  // 每次读 1 个字符
+        // 处理字符...
+        p++;  // 指针向后移动
+    }
+    ```
+
+  - `buf` 内容逐步变成：`h e l l o   t o o \n`（`_` 代表空格）。
+
+- 步骤 3: 拆分参数（关键！）
+
+  - 代码逐字符扫描 `buf`，遇到 **空格** 或 **换行** 就切割参数：
+  
+  ```c
+  if(*p == ' ' || *p == '\n'){
+      char c = *p;   // 保存当前字符（空格或换行）
+      *p = '\0';     // 把空格/换行替换为字符串结束符 \0
+      *(pa++) = last_p; // 把 last_p 开始的字符串存入 argsbuf
+      last_p = p + 1;   // 更新下一个参数的起点
+      if(c == '\n') {   // 如果是换行，执行命令！
+          *pa = 0;      // 参数结尾标记 NULL
+          run(argv[1], argsbuf); // 执行命令
+          pa = args;    // 重置指针，准备下一行
+      }
+  }
+  ```
+
+  - 具体拆分过程：
+    1. **读到 `hello` 后的空格**：
+       - `*p` 是空格 → 触发切割。
+       - 在空格位置写 `\0` → `buf` 中 `"hello\0too\n"`。
+       - 把 `last_p`（指向 `"hello"` 开头）存入 `argsbuf[2]`。
+       - `pa++` 指向下一个空位 `argsbuf[3]`。
+       - `last_p` 更新指向 `"too"` 的开头。
+
+    2. **读到结尾的 `\n`**：
+       - `*p` 是换行 → 触发切割和执行。
+       - 在换行位置写 `\0` → `buf` 中 `"hello\0too\0"`。
+       - 把 `last_p`（指向 `"too"` 开头）存入 `argsbuf[3]`。
+       - 设置 `argsbuf[4] = NULL`（参数结束标志）。
+       - 此时 `argsbuf` 完整内容：
+
+        ```c
+        argsbuf[0] = "echo"  // 初始命令
+        argsbuf[1] = "bye"   // 初始参数
+        argsbuf[2] = "hello" // 输入的第一个参数
+        argsbuf[3] = "too"   // 输入的第二个参数
+        argsbuf[4] = NULL    // 结束标志
+        ```
+
+- 步骤 4: 执行命令 (`echo bye hello too`)
+  
+  ```c
+  void run(char *program, char **args) {
+      int pid = fork();  // 创建子进程
+      if(pid == 0) {
+          exec(program, args); // 子进程执行：echo bye hello too
+          exit(0);
+      } else {
+          wait(0); // 父进程等待子进程结束
+      }
+  }
+  ```
+
+  - 最终输出：`bye hello too`
